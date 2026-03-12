@@ -1,4 +1,4 @@
-./test
-./test.cpp
-./test_xor
-./test_xor.cpp
+test
+test.cpp
+test_xor
+test_xor.cpp
