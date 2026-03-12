@@ -65,8 +65,8 @@ namespace LibCN{
             this->layers.resize(layer_size);
         }
     
-        void init(){
-            for(size_t i=0;i<layers.size();i++)layers[i].init();
+        void init(T low=T(-1),T high=T(1)){
+            for(size_t i=0;i<layers.size();i++)layers[i].init(low,high);
         }
     }; 
 }

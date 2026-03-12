@@ -13,7 +13,7 @@ int main()
     net.setLayer(0,2,4);
     net.setLayer(1,4,1);
 
-    net.init();
+    net.init(-2,2);
     // 激活函数
     net.setLayFun(0,Activations::relu<float>,Activations::relu_d<float>);
     net.setLayFun(1,Activations::identity<float>,Activations::identity_d<float>);

@@ -51,9 +51,9 @@ namespace LibCN{
             return res;
         }
     
-        void init(){
+        void init(T low=T(-1),T high=T(1)){
             static std::mt19937 rng(std::random_device{}());
-            std::uniform_real_distribution<T> dist(T(-1), T(1));
+            std::uniform_real_distribution<T> dist(low, high);
             for(size_t i=0;i<out_size;++i){
                 for(size_t j=0;j<in_size;++j){
                     W[i][j]=dist(rng);
