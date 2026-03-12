@@ -7,6 +7,7 @@
 namespace LibCN{
     template<Element T>struct Layer{
         std::function<T(T)>activation;
+        std::function<T(T)>activation_d;
         size_t in_size;
         size_t out_size;
         Matrix<T>W;
@@ -32,13 +33,22 @@ namespace LibCN{
             z.resize(o,1);
         }
 
-        Matrix<T>forward(const Matrix<T>&input)const{
-            Matrix<T>res(in_size,1);
-            if(input.h==in_size&&input.l==1)res=((W*input)+b).apply(activation);
+        Matrix<T>forward(const Matrix<T>&input){
+            Matrix<T>res(out_size,1);
+            last_input=input;
+            if(input.h==in_size&&input.l==1)z=((W*input)+b);
+            res=z.apply(activation);
             return res;
         }
 
-        
+        Matrix<T>backward(const Matrix<T>&dl_da,const T&step){
+            Matrix<T>res;
+            Matrix<T>dl_dz=dl_da.hadamard(z.apply(activation_d));
+            res=W.transpose()*dl_dz;
+            W-=step*(dl_dz*last_input.transpose());
+            b-=step*dl_dz;
+            return res;
+        }
     };
 }
 

@@ -137,6 +137,11 @@ namespace LibCN{
             return res;
         }
 
+        Matrix<T>&operator+=(const Matrix<T>&a){
+            *this=*this+a;
+            return*this;
+        }
+
         Matrix<T>operator-(const Matrix<T>&a)const{
             Matrix<T>res;
             if(this->h==a.h&&this->l==a.l){
@@ -146,10 +151,24 @@ namespace LibCN{
             return res;
         }
 
+        Matrix<T>&operator-=(const Matrix<T>&a){
+            *this=*this-a;
+            return*this;
+        }
+
         Matrix<T>operator*(const T&a)const{
             Matrix<T>res(h,l);
             for(size_t i=0;i<h;i++)for(size_t j=0;j<l;j++)res[i][j]=mv[i][j]*a;
             return res;
+        }
+
+        friend Matrix<T>operator*(const T&a,const Matrix<T>&b){
+            return b*a;
+        }
+
+        Matrix<T>&operator*=(const T&a){
+            *this=*this*a;
+            return*this;
         }
 
         Matrix<T>operator*(const Matrix<T>&a)const{
@@ -162,6 +181,11 @@ namespace LibCN{
                 }
             }
             return res;
+        }
+
+        Matrix<T>&operator*=(const Matrix&a){
+            *this=*this*a;
+            return*this;
         }
 
         Matrix<T>hadamard(const Matrix<T>&a)const{
