@@ -1,37 +1,43 @@
-#include"./nn/matrix.hpp"
-#include"./nn/layer.hpp"
-#include<iostream>
+#include "./nn/network.hpp"
+#include "./nn/activations.hpp"
+#include <iostream>
 
 using namespace std;
 using namespace LibCN;
 
-int main(){
-    Layer<float>test(2,3);
-    test.activation=[](float x)->float{if(x>0)return x;else return 0;};
-    test.activation_d=[](float x)->float{if(x>0)return 1;else return 0;};
-    test.W=Matrix<float>({
-        {0.2,-0.4},
-        {0.7,0.3},
-        {-0.5,0.8}
-    });
-    test.b=Matrix<float>({
-        {0.1},
-        {-0.2},
-        {0.05}
-    });
-    Matrix<float>input{
+int main()
+{
+    // 创建网络：2层
+    // 输入 2 → 隐藏 3 → 输出 1
+    Network<float> net(2,2,1,0.1f);
+
+    // 设置层结构
+    net.setLayer(0,2,3);
+    net.setLayer(1,3,1);
+
+    // 设置激活函数
+    net.setLayFun(0,Activations::relu<float>,Activations::relu_d<float>);
+    net.setLayFun(1,Activations::identity<float>,Activations::identity_d<float>);
+
+    // 输入
+    Matrix<float> x{
         {0.5},
         {1.0}
     };
-    Matrix<float>f_res=test.forward(input);
-    cout<<f_res<<endl;
-    Matrix<float>dl_da{
-        {0},
-        {-0.55},
-        {0.6}
+
+    // 期望输出
+    Matrix<float> y{
+        {1.0}
     };
-    Matrix<float>b_res=test.backward(dl_da,0.1);
-    cout<<b_res<<endl;
-    cout<<test.W<<endl;
-    cout<<test.b<<endl;
+
+    cout<<"initial output:"<<endl;
+    cout<<net.use(x)<<endl;
+
+    // 训练一次
+    net.train(x,y);
+
+    cout<<"after one train:"<<endl;
+    cout<<net.use(x)<<endl;
+
+    return 0;
 }

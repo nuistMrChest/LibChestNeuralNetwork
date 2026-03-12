@@ -12,6 +12,12 @@ namespace LibCN{
         {a-b}->std::same_as<T>;
         {a*b}->std::same_as<T>;
         {os<<a}->std::same_as<std::ostream&>;
+        {a>b}->std::same_as<bool>;
+        {a<b}->std::same_as<bool>;
+        {a>=b}->std::same_as<bool>;
+        {a<=b}->std::same_as<bool>;
+        {a==b}->std::same_as<bool>;
+        {a!=b}->std::same_as<bool>;
     };
 
     enum class Direction{
