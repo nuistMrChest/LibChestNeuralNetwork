@@ -64,7 +64,11 @@ namespace LibCN{
             this->step=step;
             this->layers.resize(layer_size);
         }
-    };    
+    
+        void init(){
+            for(size_t i=0;i<layers.size();i++)layers[i].init();
+        }
+    }; 
 }
 
 #endif

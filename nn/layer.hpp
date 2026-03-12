@@ -3,6 +3,7 @@
 
 #include"matrix.hpp"
 #include<functional>
+#include<random>
 
 namespace LibCN{
     template<Element T>struct Layer{
@@ -48,6 +49,17 @@ namespace LibCN{
             W-=step*(dl_dz*last_input.transpose());
             b-=step*dl_dz;
             return res;
+        }
+    
+        void init(){
+            static std::mt19937 rng(std::random_device{}());
+            std::uniform_real_distribution<T> dist(T(-1), T(1));
+            for(size_t i=0;i<out_size;++i){
+                for(size_t j=0;j<in_size;++j){
+                    W[i][j]=dist(rng);
+                }
+                b[i][0]=dist(rng);
+            }
         }
     };
 }
