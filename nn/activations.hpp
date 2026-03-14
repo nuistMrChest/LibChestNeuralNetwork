@@ -6,46 +6,95 @@
 
 namespace LibCN{
     namespace Activations{
-        template<Element T>T relu(T x){
-            return x>T(0)?x:T(0);
+        template<Element T>Matrix<T>relu(const Matrix<T>&a){
+            Matrix<T>res(a.h,a.l);
+            for(size_t i=0;i<a.h;i++)for(size_t j=0;j<a.l;j++)res(i,j)=a(i,j)>T(0)?a(i,j):T(0);
+            return res;
         }
 
-        template<Element T>T relu_d(T x){
-            return x>T(0)?T(1):T(0);
+        template<Element T>Matrix<T>relu_d(const Matrix<T>&a){
+            Matrix<T>res(a.h,a.l);
+            for(size_t i=0;i<a.h;i++)for(size_t j=0;j<a.l;j++)res(i,j)=a(i,j)>T(0)?T(1):T(0);
+            return res;
         }
 
-        template<Element T>T leaky_relu(T x,T alpha=T(0.01)){
-            return x>T(0)?x:alpha*x;
+        template<Element T>Matrix<T>leaky_relu(const Matrix<T>&a){
+            Matrix<T>res(a.h,a.l);
+            for(size_t i=0;i<a.h;i++)for(size_t j=0;j<a.l;j++)res(i,j)=a(i,j)>T(0)?a(i,j):T(0.01)*a(i,j);
+            return res;
         }
 
-        template<Element T>T leaky_relu_d(T x,T alpha=T(0.01)){
-            return x>T(0)?T(1):alpha;
+        template<Element T>Matrix<T>leaky_relu_d(const Matrix<T>&a){
+            Matrix<T>res(a.h,a.l);
+            for(size_t i=0;i<a.h;i++)for(size_t j=0;j<a.l;j++)res(i,j)=a(i,j)>T(0)?T(1):T(0.01);
+            return res;
         }
 
-        template<Element T>T sigmoid(T x){
-            return T(1)/(T(1)+std::exp(-x));
+        template<Element T>Matrix<T>sigmoid(const Matrix<T>&a){
+            Matrix<T>res(a.h,a.l);
+            for(size_t i=0;i<a.h;i++)for(size_t j=0;j<a.l;j++)res(i,j)=T(1)/(T(1)+std::exp(T(-1)*a(i,j)));
+            return res;
         }
 
-        template<Element T>T sigmoid_d(T x){
-            T s=sigmoid(x);
-            return s*(T(1)-s);
+        template<Element T>Matrix<T>sigmoid_d(const Matrix<T>&a){
+            Matrix<T>res(a.h,a.l);
+            Matrix<T>s=sigmoid(a);
+            for(size_t i=0;i<a.h;i++)for(size_t j=0;j<a.l;j++)res(i,j)=s(i,j)*(T(1)-s(i,j));
+            return res;
         }
 
-        template<Element T>T tanh(T x){
-            return std::tanh(x);
+        template<Element T>Matrix<T>tanh(const Matrix<T>&a){
+            Matrix<T>res(a.h,a.l);
+            for(size_t i=0;i<a.h;i++)for(size_t j=0;j<a.l;j++)res(i,j)=std::tanh(a(i,j));
+            return res;
         }
 
-        template<Element T>T tanh_d(T x){
-            T t=std::tanh(x);
-            return T(1)-t*t;
+        template<Element T>Matrix<T>tanh_d(const Matrix<T>&a){
+            Matrix<T>res(a.h,a.l);
+            Matrix<T>t=tanh(a);
+            for(size_t i=0;i<a.h;i++)for(size_t j=0;j<a.l;j++)res(i,j)=T(1)-t(i,j)*t(i,j);
+            return res;
         }
 
-        template<Element T>T identity(T x){
-            return x;
+        template<Element T>Matrix<T>identity(const Matrix<T>&a){
+            return a;
         }
 
-        template<Element T>T identity_d(T x){
-            return T(1);
+        template<Element T>Matrix<T>identity_d(const Matrix<T>&a){
+            Matrix<T>res(a.h,a.l);
+            for(size_t i=0;i<a.h;i++)for(size_t j=0;j<a.l;j++)res(i,j)=T(1);
+            return res;
+        }
+
+        template<Element T>Matrix<T>softmax(const Matrix<T>&a){
+            Matrix<T>res(a.h,a.l);
+
+            T mx=a(0,0);
+            for(size_t i=0;i<a.h;i++)
+                for(size_t j=0;j<a.l;j++)
+                    if(a(i,j)>mx)mx=a(i,j);
+
+            T sum=T(0);
+            for(size_t i=0;i<a.h;i++)
+                for(size_t j=0;j<a.l;j++){
+                    res(i,j)=std::exp(a(i,j)-mx);
+                    sum+=res(i,j);
+                }
+
+            for(size_t i=0;i<a.h;i++)
+                for(size_t j=0;j<a.l;j++)
+                    res(i,j)/=sum;
+
+            return res;
+        }
+
+        template<Element T>Matrix<T>softmax_d(const Matrix<T>&a){
+            Matrix<T>res(a.h,a.l);
+            Matrix<T>s=softmax(a);
+            for(size_t i=0;i<a.h;i++)
+                for(size_t j=0;j<a.l;j++)
+                    res(i,j)=s(i,j)*(T(1)-s(i,j));
+            return res;
         }
     }
 }

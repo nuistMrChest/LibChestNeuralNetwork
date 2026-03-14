@@ -1,40 +1,39 @@
 # Lib Chest NeuralNetwork (LibCN)
 
-A lightweight neural network library written in pure C++.
+A lightweight header-only neural network library written in pure C++.
 
-Lib Chest NeuralNetwork (LibCN) is a small, header-only C++ library designed for learning and experimenting with neural networks and machine learning algorithms. It focuses on simplicity, transparency, and ease of use within native C++ environments.
+LibCN is a small C++ library built for learning, experimentation, and writing simple neural network code without heavy dependencies. It focuses on clarity and directness rather than framework-scale abstraction.
 
-This project is primarily intended for educational purposes, experimentation, and as a reference implementation.
+This project is mainly intended for educational use, small experiments, and as a reference implementation.
 
 ---
 
 ## Motivation
 
-Many powerful machine learning frameworks already exist, such as PyTorch and TensorFlow.  
-These frameworks are excellent and highly optimized.
+Large machine learning frameworks such as PyTorch and TensorFlow are powerful and highly optimized.
 
-However, their C++ interfaces are often extremely complex and difficult to use for everyday development or learning purposes.
+However, their C++ interfaces are often much heavier than what is needed for learning or small native projects.
 
-LibCN attempts to provide an alternative approach:
+LibCN tries to offer a simpler alternative:
 
-- A **pure C++ neural network implementation**
-- Minimal abstraction
-- Easy to read and modify
-- Designed to feel natural inside normal C++ code
+- pure C++ implementation
+- minimal abstraction
+- easy to read and modify
+- natural to use inside normal C++ code
 
-This library is **not intended to replace large frameworks**, but rather to provide a simple and understandable implementation that can be used for learning, experimentation, and reference.
+This library is **not meant to replace industrial deep learning frameworks**. Its goal is to stay understandable.
 
 ---
 
 ## Goals
 
-LibCN is designed with the following goals:
+LibCN is designed to:
 
-- Learn how neural networks work internally
-- Implement machine learning algorithms from scratch
-- Provide a simple matrix utility
-- Avoid heavy dependencies
-- Be easy to integrate into existing C++ projects
+- help understand how neural networks work internally
+- provide a simple matrix container for neural computation
+- avoid external dependencies
+- stay easy to integrate into existing C++ projects
+- remain small enough to read through directly
 
 ---
 
@@ -45,34 +44,47 @@ LibCN is designed with the following goals:
 - Requires only the C++ standard library
 - No external dependencies
 - No build system required
-- Works with any C++20 compatible compiler
-- Simple matrix operations
-- Basic neural network components
-- Activation functions
-- Layer abstraction
-- Easy integration into C++ projects
+- Matrix operations
+- Fully connected layers
+- Multiple activation functions
+- Multiple loss functions
+- Optional specialized training path for Softmax output + Cross Entropy loss
+- Optional loss printing during training
+
+---
+
+## New in v2.0.0
+
+Compared with the previous version, LibCN v2.0.0 mainly introduces:
+
+- `Matrix<T>` internal storage changed from nested vectors to a single `std::vector<T>` with coordinate mapping
+- matrix element access changed to `matrix(i, j)`
+- removed `append`
+- removed `apply`
+- activation function interface changed from scalar-in/scalar-out to matrix-in/matrix-out
+- added `softmax`
+- added selectable loss functions
+- added `Network::setLoss(...)`
+- added `Network::train_p(...)`
+- added a specialized training path for **Softmax output layer + Cross Entropy loss**
+- added `Layer::backward_dz(...)`
+- added `Layer::sm` and `Network::ce`
 
 ---
 
 ## Design Philosophy
 
-LibCN follows a few simple principles:
+1. **Transparency over abstraction**  
+   Code should be readable and understandable.
 
-1. **Transparency over abstraction**
-
-   Code should be easy to read and understand.
-
-2. **Minimal dependencies**
-
+2. **Minimal dependencies**  
    Only the C++ standard library is used.
 
-3. **Header-only simplicity**
+3. **Header-only simplicity**  
+   No extra linking steps are required.
 
-   No build systems, no linking steps.
-
-4. **C++ friendly interface**
-
-   Designed to feel natural for C++ developers.
+4. **C++ friendly interface**  
+   The library is designed to feel natural in ordinary C++ code.
 
 ---
 
@@ -89,29 +101,29 @@ Examples:
 
 Example compilation:
 
-```
-g++ -std=c++20 example.cpp
+```cpp
+g++ -std=c++20 example.cpp -o example
 ```
 
 ---
 
 ## Installation
 
-LibCN is a header-only library.
+LibCN is header-only.
 
-Simply copy the repository into your project and include the main header:
+Simply copy the library into your project and include:
 
-```
+```cpp
 #include "lib_chest_nn.hpp"
 ```
 
-No build system, installation script, or package manager is required.
+No installation script or package manager is required.
 
 ---
 
 ## Quick Example
 
-A minimal example using LibCN:
+A minimal XOR example:
 
 ```cpp
 
@@ -124,6 +136,8 @@ using namespace LibCN;
 int main()
 {
     Network<float> net(2, 2, 1, 0.05f);
+
+    net.setLoss(Losses::MSE<float>, Losses::MSE_d<float>);
 
     net.setLayer(0, 2, 4);
     net.setLayer(1, 4, 1);
@@ -151,10 +165,20 @@ int main()
 
     for(int i = 0; i < 50000; ++i)
     {
-        net.train(x1, y1);
-        net.train(x2, y2);
-        net.train(x3, y3);
-        net.train(x4, y4);
+        if(i%2500==0)
+        {
+            net.train_p(x1, y1);
+            net.train_p(x2, y2);
+            net.train_p(x3, y3);
+            net.train_p(x4, y4);
+        }
+        else
+        {
+            net.train(x1, y1);
+            net.train(x2, y2);
+            net.train(x3, y3);
+            net.train(x4, y4);
+        }
     }
 
     cout << "\nafter training" << endl;
@@ -168,75 +192,123 @@ int main()
 
 ```
 
-More examples will be added in the future.
+---
+
+## Softmax + Cross Entropy Specialized Path
+
+LibCN contains a specialized training path for the common combination:
+
+- output layer uses `softmax`
+- loss uses cross entropy
+
+This path is enabled by flags already present in the library:
+
+```cpp
+net.ce = true;
+net.layers.back().sm = true;
+```
+
+When both conditions are true, `train(...)` and `train_p(...)` will use the specialized path.
+
+In that path, the last layer receives:
+
+```cpp
+output - expected
+```
+
+as `dL/dz`, and the last layer backpropagation is performed through:
+
+```cpp
+backward_dz(...)
+```
+
+rather than the ordinary `backward(...)` path.
+
+---
+
+## Loss Functions
+
+Current loss functions are provided in `LibCN::Losses`:
+
+- `MSE`
+- `MAE`
+- `cross_entropy`
+
+Their corresponding derivative functions are also provided.
+
+Loss selection is done through:
+
+```cpp
+net.setLoss(loss_function, loss_derivative_function);
+```
+
+---
+
+## Activation Functions
+
+Current activation functions are provided in `LibCN::Activations`:
+
+- `relu`
+- `relu_d`
+- `leaky_relu`
+- `leaky_relu_d`
+- `sigmoid`
+- `sigmoid_d`
+- `tanh`
+- `tanh_d`
+- `identity`
+- `identity_d`
+- `softmax`
+- `softmax_d`
+
+Note that `softmax_d` in the current implementation is an **approximate version**, not the full Jacobian form. Use it carefully.
 
 ---
 
 ## Project Structure
 
-```
+```text
 lib_chest_nn.hpp
 nn/
     matrix.hpp
     layer.hpp
     activations.hpp
+    losses.hpp
     network.hpp
 ```
 
 ### File Overview
 
-**lib_chest_nn.hpp**
+**lib_chest_nn.hpp**  
+Main entry header.
 
-Main entry header.  
-Including this file provides access to the entire library.
+**nn/matrix.hpp**  
+Matrix type and matrix operations.
 
-**nn/matrix.hpp**
+**nn/layer.hpp**  
+Fully connected layer implementation.
 
-Matrix implementation and matrix operations.
+**nn/activations.hpp**  
+Activation functions and their derivatives.
 
-**nn/layer.hpp**
+**nn/losses.hpp**  
+Loss functions and their derivatives.
 
-Definition of neural network layers.
-
-**nn/activations.hpp**
-
-Common activation functions and their derivatives.
-
-**nn/network.hpp**
-
-High level neural network structure.
+**nn/network.hpp**  
+High-level neural network structure.
 
 ---
 
 ## Current Status
 
-Current version:
-
-```
-v1.0.0
-```
-
 LibCN is currently suitable for:
 
-- Learning neural networks
-- Educational demonstrations
-- Small experiments
-- Reference implementations
+- learning neural networks
+- educational demonstrations
+- small experiments
+- reference implementations
 
 It is **not intended for production-scale deep learning workloads**.
-
----
-
-## Future Plans
-
-Possible future improvements include:
-
-- More activation functions
-- Additional layer types
-- Better error diagnostics
-- Training utilities
-- Optimization algorithms
-- Optional GPU support
 
 ---
 

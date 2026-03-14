@@ -6,6 +6,8 @@
 #include<vector>
 #include<functional>
 #include"activations.hpp"
+#include"losses.hpp"
+#include<iostream>
 
 namespace LibCN{
     template<Element T>struct Network{
@@ -13,6 +15,9 @@ namespace LibCN{
         size_t out_size;
         std::vector<Layer<T>>layers;
         T step;
+        std::function<T(const Matrix<T>&,const Matrix<T>&)>loss;
+        std::function<Matrix<T>(const Matrix<T>&,const Matrix<T>&)>loss_d;
+        bool ce;
 
         void train(const Matrix<T>&input,const Matrix<T>&expected){
             Matrix<T>last_output=input;
@@ -21,12 +26,47 @@ namespace LibCN{
                 output=layers[i].forward(last_output);
                 last_output=output;
             }
-            Matrix<T>last_dl_da=output-expected;
-            Matrix<T>dl_da;
+            Matrix<T>last_grad;
+            if(layers.back().sm&&ce){
+                Matrix<T>dl_dz = output - expected;
+                last_grad = layers.back().backward_dz(dl_dz, step);
+                for(size_t i=0;i<layers.size()-1;i++){
+                    size_t j=layers.size()-2-i;
+                    last_grad = layers[j].backward(last_grad, step);
+                }
+            }
+            else{
+                Matrix<T>last_dl_da = loss_d(output, expected);
+                for(size_t i=0;i<layers.size();i++){
+                    size_t j=layers.size()-1-i;
+                    last_dl_da = layers[j].backward(last_dl_da, step);
+                }
+            }
+        }
+
+        void train_p(const Matrix<T>&input,const Matrix<T>&expected){
+            Matrix<T>last_output=input;
+            Matrix<T>output;
             for(size_t i=0;i<layers.size();i++){
-                size_t j=layers.size()-1-i;
-                dl_da=layers[j].backward(last_dl_da,step);
-                last_dl_da=dl_da;
+                output=layers[i].forward(last_output);
+                last_output=output;
+            }
+            std::cout<<"Loss: "<<loss(output,expected)<<std::endl;
+            Matrix<T>last_grad;
+            if(ce&&layers.back().sm){
+                Matrix<T>dl_dz = output-expected;
+                last_grad = layers.back().backward_dz(dl_dz, step);
+                for(size_t i=0;i<layers.size()-1;i++){
+                    size_t j=layers.size()-2-i;
+                    last_grad = layers[j].backward(last_grad, step);
+                }
+            }
+            else{
+                Matrix<T>last_dl_da = loss_d(output, expected);
+                for(size_t i=0;i<layers.size();i++){
+                    size_t j=layers.size()-1-i;
+                    last_dl_da = layers[j].backward(last_dl_da, step);
+                }
             }
         }
 
@@ -34,9 +74,14 @@ namespace LibCN{
             layers[index]=Layer<T>(i,o);
         }
 
-        void setLayerFun(size_t index,const std::function<T(T)>&a,const std::function<T(T)>&a_d){
+        void setLayerFun(size_t index,const std::function<Matrix<T>(const Matrix<T>&)>&a,const std::function<Matrix<T>(const Matrix<T>&)>&a_d){
             layers[index].activation=a;
             layers[index].activation_d=a_d;
+        }
+
+        void setLoss(const std::function<T(const Matrix<T>&,const Matrix<T>&)>l,const std::function<Matrix<T>(const Matrix<T>&,const Matrix<T>&)>l_d){
+            loss=l;
+            loss_d=l_d;
         }
 
         Matrix<T>use(const Matrix<T>&input){
@@ -56,6 +101,7 @@ namespace LibCN{
             out_size=0;
             layers.resize(0);
             step=T{};
+            ce=false;
         }
 
         Network(size_t layer_size,size_t in_size,size_t out_size,const T&step){
@@ -63,6 +109,7 @@ namespace LibCN{
             this->out_size=out_size;
             this->step=step;
             this->layers.resize(layer_size);
+            ce=false;
         }
     
         void init(T low=T(-1),T high=T(1)){

@@ -5,5 +5,6 @@
 #include"./nn/layer.hpp"
 #include"./nn/activations.hpp"
 #include"./nn/network.hpp"
+#include"./nn/losses.hpp"
 
 #endif
