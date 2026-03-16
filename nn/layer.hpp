@@ -37,26 +37,26 @@ namespace LibCN{
             sm=false;
         }
 
-        Tensor<T>forward(const Tensor<T>&input){
+        Tensor<T>forward(const Tensor<T>&input,size_t thread_num=0){
             Tensor<T>res(2,{out_size,1});
             last_input=input;
-            if(input.getShape()[0]==in_size&&input.getShape()[1]==1)z=((W.matrixMultiplication(input))+b);
+            if(input.getShape()[0]==in_size&&input.getShape()[1]==1)z=((W.matrixMultiplication(input,thread_num))+b);
             res=activation(z);
             return res;
         }
 
-        Tensor<T>backward(const Tensor<T>&dl_da,const T&step){
+        Tensor<T>backward(const Tensor<T>&dl_da,const T&step,size_t thread_num=0){
             Tensor<T>res;
             Tensor<T>dl_dz=dl_da.hadamard(activation_d(z));
-            res=W.transpose(0,1).matrixMultiplication(dl_dz);
-            W-=step*(dl_dz.matrixMultiplication(last_input.transpose(0,1)));
+            res=W.transpose(0,1).matrixMultiplication(dl_dz,thread_num);
+            W-=step*(dl_dz.matrixMultiplication(last_input.transpose(0,1),thread_num));
             b-=step*dl_dz;
             return res;
         }
 
-        Tensor<T>backward_dz(const Tensor<T>&dl_dz,const T&step){
-            Tensor<T>res=W.transpose(0,1).matrixMultiplication(dl_dz);
-            W-=step*(dl_dz.matrixMultiplication(last_input.transpose(0,1)));
+        Tensor<T>backward_dz(const Tensor<T>&dl_dz,const T&step,size_t thread_num=0){
+            Tensor<T>res=W.transpose(0,1).matrixMultiplication(dl_dz,thread_num);
+            W-=step*(dl_dz.matrixMultiplication(last_input.transpose(0,1),thread_num));
             b-=step*dl_dz;
             return res;
         }

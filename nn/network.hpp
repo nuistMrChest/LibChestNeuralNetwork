@@ -18,6 +18,11 @@ namespace LibCN{
         std::function<T(const Tensor<T>&,const Tensor<T>&)>loss;
         std::function<Tensor<T>(const Tensor<T>&,const Tensor<T>&)>loss_d;
         bool ce;
+        size_t thread_num;
+
+        void setThreadNum(size_t tn){
+            thread_num=tn;
+        }
 
         Tensor<T>saveLayerWeights(size_t index){
             return layers[index].W;
@@ -39,23 +44,23 @@ namespace LibCN{
             Tensor<T>last_output=input;
             Tensor<T>output;
             for(size_t i=0;i<layers.size();i++){
-                output=layers[i].forward(last_output);
+                output=layers[i].forward(last_output,thread_num);
                 last_output=output;
             }
             Tensor<T>last_grad;
             if(layers.back().sm&&ce){
                 Tensor<T>dl_dz=output-expected;
-                last_grad=layers.back().backward_dz(dl_dz,step);
+                last_grad=layers.back().backward_dz(dl_dz,step,thread_num);
                 for(size_t i=0;i<layers.size()-1;i++){
                     size_t j=layers.size()-2-i;
-                    last_grad = layers[j].backward(last_grad,step);
+                    last_grad = layers[j].backward(last_grad,step,thread_num);
                 }
             }
             else{
                 Tensor<T>last_dl_da=loss_d(output,expected);
                 for(size_t i=0;i<layers.size();i++){
                     size_t j=layers.size()-1-i;
-                    last_dl_da=layers[j].backward(last_dl_da,step);
+                    last_dl_da=layers[j].backward(last_dl_da,step,thread_num);
                 }
             }
         }
@@ -64,24 +69,24 @@ namespace LibCN{
             Tensor<T>last_output=input;
             Tensor<T>output;
             for(size_t i=0;i<layers.size();i++){
-                output=layers[i].forward(last_output);
+                output=layers[i].forward(last_output,thread_num);
                 last_output=output;
             }
             std::cout<<"Loss: "<<loss(output,expected)<<std::endl;
             Tensor<T>last_grad;
             if(ce&&layers.back().sm){
                 Tensor<T>dl_dz=output-expected;
-                last_grad=layers.back().backward_dz(dl_dz,step);
+                last_grad=layers.back().backward_dz(dl_dz,step,thread_num);
                 for(size_t i=0;i<layers.size()-1;i++){
                     size_t j=layers.size()-2-i;
-                    last_grad=layers[j].backward(last_grad,step);
+                    last_grad=layers[j].backward(last_grad,step,thread_num);
                 }
             }
             else{
                 Tensor<T>last_dl_da=loss_d(output,expected);
                 for(size_t i=0;i<layers.size();i++){
                     size_t j=layers.size()-1-i;
-                    last_dl_da = layers[j].backward(last_dl_da,step);
+                    last_dl_da = layers[j].backward(last_dl_da,step,thread_num);
                 }
             }
         }
@@ -105,7 +110,7 @@ namespace LibCN{
             Tensor<T>last_output=input;
             Tensor<T>output;
             for(size_t i=0;i<layers.size();i++){
-                output=layers[i].forward(last_output);
+                output=layers[i].forward(last_output,thread_num);
                 last_output=output;
             }
             res=output;
@@ -118,6 +123,7 @@ namespace LibCN{
             layers.resize(0);
             step=T{};
             ce=false;
+            thread_num=0;
         }
 
         MLP(size_t layer_size,size_t in_size,size_t out_size,const T&step){
@@ -126,6 +132,7 @@ namespace LibCN{
             this->step=step;
             this->layers.resize(layer_size);
             ce=false;
+            thread_num=0;
         }
     
         void init(T low=T(-1),T high=T(1)){

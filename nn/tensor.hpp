@@ -5,6 +5,7 @@
 #include<iostream>
 #include<numeric>
 #include<utility>
+#include<thread>
 
 namespace LibCN{
     template<typename T>concept Element=requires(T a,T b,std::iostream&os){
@@ -369,22 +370,41 @@ namespace LibCN{
             return (this->hadamard(a)).accumulate();
         }
 
-        Tensor<T>matrixMultiplication(const Tensor<T>&b)const{
+        static void subMatrixMultiplication(size_t f,size_t m,size_t n,size_t p,Tensor<T>&res,const Tensor<T>&a,const Tensor<T>&b){
+            for(size_t i=f;i<m;i++)for(size_t k=0;k<n;++k){
+                T aik=a.values[i*a.stride[0]+k*a.stride[1]];
+                for(size_t j=0;j<p;++j)res.values[i*res.stride[0]+j*res.stride[1]]+=aik*b.values[k*b.stride[0]+j*b.stride[1]];
+            }
+        }
+
+        Tensor<T>matrixMultiplication(const Tensor<T>&b,size_t thread_num=0)const{
             const Tensor<T>&a=*this;
             Tensor<T>res;
             if(a.dimension==2&&b.dimension==2&&a.shape[1]==b.shape[0]){
                 size_t m=a.shape[0];
                 size_t n=a.shape[1];
                 size_t p=b.shape[1];
-                res.resize(2, {m, p});
-                for(size_t i=0;i<res.values.size();++i)res.values[i]=T(0);
-                for(size_t i=0;i<m;++i){
-                    for(size_t k=0;k<n;++k){
+                if(m<((200000/p)/n)||thread_num<=0){
+                    res.resize(2, {m, p});
+                    for(size_t i=0;i<res.values.size();++i)res.values[i]=T(0);
+                    for(size_t i=0;i<m;++i)for(size_t k=0;k<n;++k){
                         T aik=a.values[i*a.stride[0]+k*a.stride[1]];
-                        for(size_t j=0;j<p;++j){
-                            res.values[i*res.stride[0]+j*res.stride[1]]+=aik*b.values[k*b.stride[0]+j*b.stride[1]];
-                        }
+                        for(size_t j=0;j<p;++j)res.values[i*res.stride[0]+j*res.stride[1]]+=aik*b.values[k*b.stride[0]+j*b.stride[1]];
                     }
+                }
+                else{
+                    res.resize(2, {m, p});
+                    for(size_t i=0;i<res.values.size();++i)res.values[i]=T(0);
+                    size_t i=0;
+                    thread_num=std::max<size_t>(1,std::min(thread_num,m));
+                    size_t l=m/thread_num;
+                    std::vector<std::thread>ts;
+                    while(i<m){
+                        if(i+l<m)ts.push_back(std::thread(subMatrixMultiplication,i,i+l,n,p,std::ref(res),std::cref(a),std::cref(b)));
+                        else ts.push_back(std::thread(subMatrixMultiplication,i,m,n,p,std::ref(res),std::cref(a),std::cref(b)));
+                        i+=l;
+                    }
+                    for(size_t i=0;i<ts.size();i++)ts[i].join();
                 }
             }
 

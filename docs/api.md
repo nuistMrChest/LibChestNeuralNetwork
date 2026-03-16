@@ -1,6 +1,6 @@
 # LibCN API Documentation
 
-This document describes the public interfaces of **Lib Chest NeuralNetwork (LibCN)** in the current **v3.0.0** code.
+This document describes the public interfaces of **Lib Chest NeuralNetwork (LibCN)** in the current **v3.1.0** code.
 
 To use the whole library, include:
 
@@ -30,7 +30,7 @@ nn/tensor.hpp
 
 ## Overview
 
-`Tensor<T>` is the core mathematical container used throughout LibCN v3.0.0.
+`Tensor<T>` is the core mathematical container used throughout LibCN v3.1.0.
 
 It stores:
 
@@ -392,6 +392,8 @@ Swaps two axes.
 
 If an axis is out of range, `transpose(...)` returns an empty tensor.
 
+For 2D tensors, the implementation uses a specialized fast path.
+
 ---
 
 ### sum
@@ -433,7 +435,7 @@ So the current `dot(...)` is a full element-wise contraction into a scalar tenso
 ### matrixMultiplication
 
 ```cpp
-Tensor<T> matrixMultiplication(const Tensor<T>& b) const
+Tensor<T> matrixMultiplication(const Tensor<T>& b, size_t thread_num = 0) const
 ```
 
 Performs ordinary 2D matrix multiplication when:
@@ -445,6 +447,44 @@ this->shape[1] == b.shape[0]
 ```
 
 Otherwise returns an empty tensor.
+
+#### Multi-thread behavior
+
+- `thread_num <= 0`:
+  - always uses the single-thread path
+- `thread_num > 0`:
+  - may use the multi-thread path if the matrix workload is large enough
+
+For `A` with shape `m * n` and `B` with shape `n * p`, the implementation uses the single-thread path when:
+
+```cpp
+m < ((200000 / p) / n) || thread_num <= 0
+```
+
+So in ordinary usage, the multi-thread path is effectively intended for cases around:
+
+```text
+m * n * p >= 200000
+```
+
+When multi-threading is used:
+
+- the result rows are partitioned across worker threads
+- the requested thread count is clamped into `[1, m]`
+- the worker routine used internally is:
+
+```cpp
+static void subMatrixMultiplication(
+    size_t f,
+    size_t m,
+    size_t n,
+    size_t p,
+    Tensor<T>& res,
+    const Tensor<T>& a,
+    const Tensor<T>& b)
+```
+
+This helper is part of the public class definition, but it exists primarily as an implementation detail of threaded matrix multiplication.
 
 ---
 
@@ -548,13 +588,13 @@ std::uniform_real_distribution<T> dist(low, high);
 ## forward
 
 ```cpp
-Tensor<T> forward(const Tensor<T>& input)
+Tensor<T> forward(const Tensor<T>& input, size_t thread_num = 0)
 ```
 
 Performs:
 
 ```cpp
-z = W.matrixMultiplication(input) + b
+z = W.matrixMultiplication(input, thread_num) + b
 activation(z)
 ```
 
@@ -567,7 +607,7 @@ If the shape check fails, `z` is not updated, and the function still returns `ac
 ## backward
 
 ```cpp
-Tensor<T> backward(const Tensor<T>& dl_da, const T& step)
+Tensor<T> backward(const Tensor<T>& dl_da, const T& step, size_t thread_num = 0)
 ```
 
 Standard backpropagation path.
@@ -576,8 +616,8 @@ Computation:
 
 ```cpp
 dl_dz = dl_da.hadamard(activation_d(z))
-res   = W.transpose(0,1).matrixMultiplication(dl_dz)
-W    -= step * (dl_dz.matrixMultiplication(last_input.transpose(0,1)))
+res   = W.transpose(0,1).matrixMultiplication(dl_dz, thread_num)
+W    -= step * (dl_dz.matrixMultiplication(last_input.transpose(0,1), thread_num))
 b    -= step * dl_dz
 ```
 
@@ -588,12 +628,20 @@ Returns gradient with respect to the previous layer output.
 ## backward_dz
 
 ```cpp
-Tensor<T> backward_dz(const Tensor<T>& dl_dz, const T& step)
+Tensor<T> backward_dz(const Tensor<T>& dl_dz, const T& step, size_t thread_num = 0)
 ```
 
 Backpropagation path used when the caller already has `dL/dz`.
 
 This is used by the specialized `softmax + cross_entropy` path in `MLP<T>`.
+
+Computation:
+
+```cpp
+res = W.transpose(0,1).matrixMultiplication(dl_dz, thread_num)
+W  -= step * (dl_dz.matrixMultiplication(last_input.transpose(0,1), thread_num))
+b  -= step * dl_dz
+```
 
 ---
 
@@ -737,7 +785,7 @@ T MAE(const Tensor<T>& x, const Tensor<T>& e)
 
 If shapes match, computes mean absolute error.
 
-> In the current source, the final division is written as `sum / (x.h * x.l)`. Since `Tensor<T>` does not define `h` and `l`, this appears inconsistent with the rest of the v3.0.0 tensor-based code and should likely be corrected to a shape-based expression.
+> In the current source, the final division is written as `sum / (x.h * x.l)`. Since `Tensor<T>` does not define `h` and `l`, this appears inconsistent with the rest of the v3.1.0 tensor-based code and should likely be corrected to a shape-based expression.
 
 ---
 
@@ -805,7 +853,7 @@ nn/network.hpp
 
 ## Overview
 
-`MLP<T>` is the high-level feed-forward neural network type in LibCN v3.0.0.
+`MLP<T>` is the high-level feed-forward neural network type in LibCN v3.1.0.
 
 This is the renamed successor to the old `Network<T>` interface.
 
@@ -821,6 +869,7 @@ T step;
 std::function<T(const Tensor<T>&, const Tensor<T>&)> loss;
 std::function<Tensor<T>(const Tensor<T>&, const Tensor<T>&)> loss_d;
 bool ce;
+size_t thread_num;
 ```
 
 ### ce
@@ -828,6 +877,17 @@ bool ce;
 `ce` defaults to `false`.
 
 It is used as a flag for the specialized `softmax + cross_entropy` training path.
+
+### thread_num
+
+`thread_num` defaults to `0`.
+
+It stores the thread count forwarded into every layer call and then into every matrix multiplication used by `train(...)`, `train_p(...)`, and `use(...)`.
+
+By current implementation:
+
+- `0` means disabled
+- positive values enable threaded matrix multiplication when the workload threshold is met
 
 ---
 
@@ -840,6 +900,13 @@ MLP()
 ```
 
 Creates an empty network.
+
+Initial state includes:
+
+```cpp
+ce = false;
+thread_num = 0;
+```
 
 ### Sized constructor
 
@@ -855,6 +922,33 @@ Initializes:
 - learning rate
 
 The layers are default-constructed and must be configured afterward.
+
+Initial state also includes:
+
+```cpp
+ce = false;
+thread_num = 0;
+```
+
+---
+
+## Thread Configuration
+
+### setThreadNum
+
+```cpp
+void setThreadNum(size_t tn)
+```
+
+Sets `thread_num`.
+
+This value is used by:
+
+- `train(...)`
+- `train_p(...)`
+- `use(...)`
+
+and forwarded into all layer `forward(...)`, `backward(...)`, and `backward_dz(...)` calls.
 
 ---
 
@@ -947,6 +1041,12 @@ Tensor<T> use(const Tensor<T>& input)
 
 Feeds the input through all layers and returns the final output.
 
+Internally, each layer call is:
+
+```cpp
+output = layers[i].forward(last_output, thread_num)
+```
+
 The intended input format is a 2D tensor shaped like a column vector.
 
 ---
@@ -960,6 +1060,12 @@ void train(const Tensor<T>& input, const Tensor<T>& expected)
 ```
 
 Performs one forward pass and one backward pass.
+
+During forward propagation, each layer is called as:
+
+```cpp
+output = layers[i].forward(last_output, thread_num)
+```
 
 #### Ordinary path
 
@@ -975,7 +1081,11 @@ Then:
 last_dl_da = loss_d(output, expected)
 ```
 
-and layers are backpropagated from last to first with `backward(...)`.
+and layers are backpropagated from last to first with:
+
+```cpp
+layers[j].backward(last_dl_da, step, thread_num)
+```
 
 #### Specialized softmax + cross_entropy path
 
@@ -994,10 +1104,10 @@ dl_dz = output - expected
 and backpropagates through:
 
 ```cpp
-layers.back().backward_dz(dl_dz, step)
+layers.back().backward_dz(dl_dz, step, thread_num)
 ```
 
-Previous layers still use ordinary `backward(...)`.
+Previous layers still use ordinary `backward(...)` with the same forwarded thread count.
 
 ---
 
@@ -1013,6 +1123,8 @@ Same as `train(...)`, but prints the current loss first:
 std::cout << "Loss: " << loss(output, expected) << std::endl;
 ```
 
+Like `train(...)`, all matrix multiplications in forward/backward propagation receive `thread_num`.
+
 ---
 
 # Typical Usage Pattern
@@ -1025,6 +1137,7 @@ net.setLayer(0, ...);
 net.setLayer(1, ...);
 net.setLayerFun(0, ..., ...);
 net.setLayerFun(1, ..., ...);
+net.setThreadNum(4); // optional in v3.1.0
 net.init();
 ```
 
@@ -1039,9 +1152,9 @@ auto x = Tensor<float>::matrix({
 
 ---
 
-# Summary of Renamed v3.0.0 Interfaces
+# Summary of Renamed / Added Interfaces
 
-Compared with the previous API:
+Compared with the older API:
 
 ```cpp
 Network<T>      -> MLP<T>
@@ -1050,8 +1163,19 @@ setMLPLayerFun  -> setLayerFun
 Matrix<T>       -> Tensor<T>
 ```
 
+Newly added in v3.1.0:
+
+```cpp
+Tensor<T>::matrixMultiplication(const Tensor<T>&, size_t thread_num = 0)
+MLPLayer<T>::forward(..., size_t thread_num = 0)
+MLPLayer<T>::backward(..., size_t thread_num = 0)
+MLPLayer<T>::backward_dz(..., size_t thread_num = 0)
+MLP<T>::thread_num
+MLP<T>::setThreadNum(size_t)
+```
+
 ---
 
 # Notes
 
-This documentation is written against the uploaded v3.0.0 source itself, so it reflects the current code behavior, including implementation details and current limitations.
+This documentation is written against the uploaded v3.1.0 source itself, so it reflects the current code behavior, including implementation details and current limitations.
