@@ -1,6 +1,6 @@
-# LibCN 5.0 API Reference
+# LibChestNN 5.0 API Reference
 
-This document describes the public interfaces present in the current **LibCN 5.0** source.
+This document describes the public interfaces present in the current **LibChestNN 5.0** source.
 
 To use the whole library, include:
 
@@ -26,14 +26,14 @@ The entry header includes:
 All main symbols are in:
 
 ```cpp
-namespace LibCN
+namespace LibChestNN
 ```
 
 Activation and loss functions are in:
 
 ```cpp
-namespace LibCN::Activations
-namespace LibCN::Losses
+namespace LibChestNN::Activations
+namespace LibChestNN::Losses
 ```
 
 ---
@@ -114,7 +114,7 @@ nn/matrix.hpp
 
 ## Overview
 
-`Matrix<T>` is the 2D dense matrix type used throughout the MLP side of LibCN.
+`Matrix<T>` is the 2D dense matrix type used throughout the MLP side of LibChestNN.
 
 ## Data Members
 
@@ -318,7 +318,7 @@ using Tensor4d = std::vector<Tensor3d<T>>;
 
 ## Tensor3d Overview
 
-`Tensor3d<T>` is the main 3D tensor type used by the CNN side of LibCN.
+`Tensor3d<T>` is the main 3D tensor type used by the CNN side of LibChestNN.
 
 ## Data Members
 
@@ -517,7 +517,7 @@ nn/activations.hpp
 All activation functions are in:
 
 ```cpp
-LibCN::Activations
+LibChestNN::Activations
 ```
 
 ---
@@ -592,7 +592,7 @@ nn/losses.hpp
 All loss functions are in:
 
 ```cpp
-LibCN::Losses
+LibChestNN::Losses
 ```
 
 All current loss functions operate on `Matrix<T>`.
@@ -1140,17 +1140,17 @@ Matrix<T> y = cnn.mlp.use(x.flatten());
 ## MLP
 
 ```cpp
-LibCN::MLP<double> net(2, 2, 2, 0.1);
+LibChestNN::MLP<double> net(2, 2, 2, 0.1);
 
 net.setLayer(0, 2, 4);
 net.setLayer(1, 4, 2);
 
-net.setLayerFun(0, LibCN::Activations::tanh<double>, LibCN::Activations::tanh_d<double>);
-net.setLayerFun(1, LibCN::Activations::softmax<double>, LibCN::Activations::softmax_d<double>);
+net.setLayerFun(0, LibChestNN::Activations::tanh<double>, LibChestNN::Activations::tanh_d<double>);
+net.setLayerFun(1, LibChestNN::Activations::softmax<double>, LibChestNN::Activations::softmax_d<double>);
 
 net.setLoss(
-    LibCN::Losses::cross_entropy<double>,
-    LibCN::Losses::cross_entropy_d<double>
+    LibChestNN::Losses::cross_entropy<double>,
+    LibChestNN::Losses::cross_entropy_d<double>
 );
 
 net.layers[1].sm = true;
@@ -1162,23 +1162,23 @@ net.init(-1.0, 1.0);
 ## CNN + MLP
 
 ```cpp
-LibCN::CNN<double> cnn(1, 1, 4, 4, 2, 3, 3, 0.05);
+LibChestNN::CNN<double> cnn(1, 1, 4, 4, 2, 3, 3, 0.05);
 
-cnn.layers[0] = LibCN::CNNLayer<double>(1, 4, 4, 2, 3, 3, 1, 0);
-cnn.layers[0].activation = LibCN::Activations::relu_t<double>;
-cnn.layers[0].activation_d = LibCN::Activations::relu_d_t<double>;
+cnn.layers[0] = LibChestNN::CNNLayer<double>(1, 4, 4, 2, 3, 3, 1, 0);
+cnn.layers[0].activation = LibChestNN::Activations::relu_t<double>;
+cnn.layers[0].activation_d = LibChestNN::Activations::relu_d_t<double>;
 cnn.layers[0].init(2, 1, 2, 2, -0.5, 0.5);
 
-cnn.mlp = LibCN::MLP<double>(1, 18, 2, 0.05);
+cnn.mlp = LibChestNN::MLP<double>(1, 18, 2, 0.05);
 cnn.mlp.setLayer(0, 18, 2);
 cnn.mlp.setLayerFun(
     0,
-    LibCN::Activations::softmax<double>,
-    LibCN::Activations::softmax_d<double>
+    LibChestNN::Activations::softmax<double>,
+    LibChestNN::Activations::softmax_d<double>
 );
 cnn.mlp.setLoss(
-    LibCN::Losses::cross_entropy<double>,
-    LibCN::Losses::cross_entropy_d<double>
+    LibChestNN::Losses::cross_entropy<double>,
+    LibChestNN::Losses::cross_entropy_d<double>
 );
 cnn.mlp.layers[0].sm = true;
 cnn.mlp.ce = true;

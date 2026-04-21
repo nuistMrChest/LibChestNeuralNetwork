@@ -1,8 +1,8 @@
-# LibCN 5.0
+# LibChestNN 5.0
 
 A lightweight, header-only neural network library written in modern C++.
 
-LibCN is a small native C++ library for learning, experimentation, and simple CPU-side neural-network projects.  
+LibChestNN is a small native C++ library for learning, experimentation, and simple CPU-side neural-network projects.  
 The current **5.0** codebase provides:
 
 - a 2D matrix container: `Matrix<T>`
@@ -14,7 +14,7 @@ The current **5.0** codebase provides:
 - parameter save/load at layer level
 - optional multi-threaded acceleration for some heavy matrix and convolution workloads
 
-LibCN focuses on readability, directness, and hackability rather than framework-scale abstraction.
+LibChestNN focuses on readability, directness, and hackability rather than framework-scale abstraction.
 
 ---
 
@@ -50,13 +50,13 @@ Example compilation on Linux:
 g++ -std=c++20 -pthread example.cpp -o example
 ```
 
-Because LibCN uses `std::thread` in several code paths, `-pthread` is recommended on GCC/Clang toolchains.
+Because LibChestNN uses `std::thread` in several code paths, `-pthread` is recommended on GCC/Clang toolchains.
 
 ---
 
 ## Installation
 
-LibCN is header-only.
+LibChestNN is header-only.
 
 Copy the files into your project with this structure:
 
@@ -127,7 +127,7 @@ In practice, this is used as a set of convolution kernels, where each output cha
 
 ## Threading Model
 
-LibCN 5.0 does **not** expose runtime thread control through something like `setThreadNum(...)`.
+LibChestNN 5.0 does **not** expose runtime thread control through something like `setThreadNum(...)`.
 
 Instead, threading is controlled by the macro `thread_num` in `matrix.hpp`:
 
@@ -170,7 +170,7 @@ The library only uses the threaded path for sufficiently large workloads. Small 
 
 ## Activation Functions
 
-The library provides matrix activations in `LibCN::Activations`:
+The library provides matrix activations in `LibChestNN::Activations`:
 
 - `relu`
 - `relu_d`
@@ -202,7 +202,7 @@ It also provides 3D tensor variants for CNN usage:
 
 ## Loss Functions
 
-Available in `LibCN::Losses`:
+Available in `LibChestNN::Losses`:
 
 - `MSE`
 - `MSE_d`
@@ -234,7 +234,7 @@ Typical workflow:
 
 ### Special `softmax + cross_entropy` path
 
-LibCN includes a manual special case for the common output combination:
+LibChestNN includes a manual special case for the common output combination:
 
 - last layer activation is `softmax`
 - loss is `cross_entropy`
@@ -304,17 +304,17 @@ A minimal MLP example:
 int main() {
     using T = double;
 
-    LibCN::MLP<T> net(2, 2, 2, 0.1);
+    LibChestNN::MLP<T> net(2, 2, 2, 0.1);
 
     net.setLayer(0, 2, 4);
     net.setLayer(1, 4, 2);
 
-    net.setLayerFun(0, LibCN::Activations::tanh<T>, LibCN::Activations::tanh_d<T>);
-    net.setLayerFun(1, LibCN::Activations::softmax<T>, LibCN::Activations::softmax_d<T>);
+    net.setLayerFun(0, LibChestNN::Activations::tanh<T>, LibChestNN::Activations::tanh_d<T>);
+    net.setLayerFun(1, LibChestNN::Activations::softmax<T>, LibChestNN::Activations::softmax_d<T>);
 
     net.setLoss(
-        LibCN::Losses::cross_entropy<T>,
-        LibCN::Losses::cross_entropy_d<T>
+        LibChestNN::Losses::cross_entropy<T>,
+        LibChestNN::Losses::cross_entropy_d<T>
     );
 
     net.layers[1].sm = true;
@@ -322,9 +322,9 @@ int main() {
 
     net.init(-1.0, 1.0);
 
-    LibCN::Matrix<T> x{{0.0}, {1.0}};
-    LibCN::Matrix<T> y{{0.0}, {1.0}};
-    LibCN::Matrix<T> first_layer_grad;
+    LibChestNN::Matrix<T> x{{0.0}, {1.0}};
+    LibChestNN::Matrix<T> y{{0.0}, {1.0}};
+    LibChestNN::Matrix<T> first_layer_grad;
 
     for (int i = 0; i < 1000; ++i) {
         net.train(x, y, first_layer_grad);
@@ -378,7 +378,7 @@ Definitions of `MLP<T>` and `CNN<T>`.
 
 ## Scope
 
-LibCN 5.0 is currently suitable for:
+LibChestNN 5.0 is currently suitable for:
 
 - learning neural-network internals
 - educational demos
@@ -401,5 +401,5 @@ It is **not** intended to compete with large production frameworks such as PyTor
 ## Documentation
 
 - `README.md`: high-level overview and usage notes
-- `api.md`: source-level API reference for LibCN 5.0
+- `api.md`: source-level API reference for LibChestNN 5.0
 
