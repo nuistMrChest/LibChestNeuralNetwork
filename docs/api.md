@@ -1,6 +1,6 @@
-# LibCN API Documentation
+# LibCN 5.0 API Reference
 
-This document describes the public interfaces of **Lib Chest NeuralNetwork (LibCN)** in the current **v3.1.0** code.
+This document describes the public interfaces present in the current **LibCN 5.0** source.
 
 To use the whole library, include:
 
@@ -11,465 +11,246 @@ To use the whole library, include:
 The entry header includes:
 
 ```cpp
+./nn/matrix.hpp
 ./nn/layer.hpp
 ./nn/activations.hpp
 ./nn/network.hpp
 ./nn/losses.hpp
-./nn/tensor.hpp
+./nn/tensor_3d.hpp
 ```
 
 ---
 
-# Tensor
+## Namespace
+
+All main symbols are in:
+
+```cpp
+namespace LibCN
+```
+
+Activation and loss functions are in:
+
+```cpp
+namespace LibCN::Activations
+namespace LibCN::Losses
+```
+
+---
+
+# Element Concept
+
+Defined in `nn/matrix.hpp`.
+
+```cpp
+template<typename T>
+concept Element = requires(T a, T b, std::iostream& os) {
+    { a + b }  -> std::same_as<T>;
+    { a += b } -> std::same_as<T&>;
+    { a - b }  -> std::same_as<T>;
+    { a -= b } -> std::same_as<T&>;
+    { a * b }  -> std::same_as<T>;
+    { a *= b } -> std::same_as<T&>;
+    { os << a }-> std::same_as<std::ostream&>;
+    { a > b }  -> std::same_as<bool>;
+    { a < b }  -> std::same_as<bool>;
+    { a >= b } -> std::same_as<bool>;
+    { a <= b } -> std::same_as<bool>;
+    { a == b } -> std::same_as<bool>;
+    { a != b } -> std::same_as<bool>;
+    { a / b }  -> std::same_as<T>;
+    T{};
+    T{0};
+    T();
+    T(0);
+};
+```
+
+All container and network templates require `T` to satisfy `Element`.
+
+---
+
+# Thread Macro
+
+Defined in `nn/matrix.hpp`.
+
+```cpp
+#ifndef thread_num
+#define thread_num 10
+#endif
+```
+
+This is a compile-time macro, not a runtime field.
+
+It is used by:
+
+- `Matrix<T>::operator*(const Matrix<T>&)`
+- `Tensor3d<T>::convolution(const Tensor4d<T>&, size_t, size_t) const`
+- `CNNLayer<T>::backward(const Tensor3d<T>&, const T&)`
+
+To override it:
+
+```cpp
+#define thread_num 4
+#include "lib_chest_nn.hpp"
+```
+
+To disable those threaded paths:
+
+```cpp
+#define thread_num 0
+#include "lib_chest_nn.hpp"
+```
+
+---
+
+# Matrix
 
 Defined in:
 
 ```cpp
-nn/tensor.hpp
+nn/matrix.hpp
 ```
 
 ## Overview
 
-`Tensor<T>` is the core mathematical container used throughout LibCN v3.1.0.
-
-It stores:
-
-- tensor dimension count
-- shape
-- stride
-- flattened values in contiguous storage
-
-The current implementation supports scalar tensors, vectors, matrices, and several higher-dimensional initializer-list constructors.
-
----
-
-## Template Requirement
-
-`Tensor<T>` requires `T` to satisfy the `Element` concept.
-
-The current concept checks support for:
-
-```cpp
-+  +=
--  -=
-*  *=
-/
-> < >= <= == !=
-std::ostream << value
-```
-
----
+`Matrix<T>` is the 2D dense matrix type used throughout the MLP side of LibCN.
 
 ## Data Members
 
 ```cpp
-size_t dimension;
-std::vector<size_t> shape;
-std::vector<size_t> stride;
-std::vector<T> values;
+std::vector<T> v;
+size_t h, l;
 ```
 
----
+Where:
 
-## Basic Member Functions
-
-### getDimension
-
-```cpp
-size_t getDimension() const
-```
-
-Returns the tensor dimension count.
-
----
-
-### getShape
-
-```cpp
-const std::vector<size_t>& getShape() const
-```
-
-Returns the stored shape vector.
-
----
-
-### unravel_index
-
-```cpp
-std::vector<size_t> unravel_index(size_t index) const
-```
-
-Converts a flat index into multi-dimensional coordinates according to the tensor stride.
-
----
-
-### ravel_index
-
-```cpp
-size_t ravel_index(const std::vector<size_t>& idx) const
-```
-
-Converts multi-dimensional coordinates into a flat index.
-
----
-
-### setStride
-
-```cpp
-void setStride()
-```
-
-Recomputes the internal stride array from the current shape and dimension.
-
----
-
-### resize
-
-```cpp
-void resize(size_t d, const std::vector<size_t>& s)
-```
-
-Resets the tensor to dimension `d`, shape `s`, resizes storage, and rebuilds stride.
-
----
+- `h` = height / row count
+- `l` = length / column count
 
 ## Constructors
 
 ### Default constructor
 
 ```cpp
-Tensor()
+Matrix()
 ```
 
-Creates an empty tensor:
+Creates an empty matrix with `h = 0`, `l = 0`.
 
-- `dimension = 0`
-- `shape` empty
-- `values` empty
-
----
-
-### General shape constructor
+### Sized constructor
 
 ```cpp
-Tensor(size_t d, const std::vector<size_t>& s)
+Matrix(size_t h, size_t l)
 ```
 
-Creates a tensor with dimension `d`, shape `s`, and storage size equal to the product of all extents.
+Allocates a matrix of shape `h x l`.
 
----
+### From nested vector
+
+```cpp
+Matrix(std::vector<std::vector<T>>& a)
+```
+
+Builds a matrix from nested `std::vector`s.
 
 ### Copy constructor
 
 ```cpp
-Tensor(const Tensor<T>& a)
+Matrix(const Matrix<T>& a)
 ```
 
-Creates a deep copy.
-
----
-
-### Scalar constructor
+### Copy assignment
 
 ```cpp
-Tensor(const T& a)
+Matrix<T>& operator=(const Matrix<T>& a)
 ```
 
-Creates a 0-dimensional tensor containing one value.
-
----
-
-### Vector constructor
+### Initializer-list constructor
 
 ```cpp
-Tensor(const std::vector<T>& a)
+Matrix(std::initializer_list<std::initializer_list<T>> init)
 ```
-
-Creates a 1-dimensional tensor from a vector.
-
----
-
-### 1D initializer-list constructor
-
-```cpp
-Tensor(std::initializer_list<T> a)
-```
-
-Creates a 1D tensor.
 
 Example:
 
 ```cpp
-Tensor<int> a{1, 2, 3};
+Matrix<double> a{{1.0, 2.0}, {3.0, 4.0}};
 ```
-
----
-
-### 2D initializer-list constructor
-
-```cpp
-Tensor(std::initializer_list<std::initializer_list<T>> a)
-```
-
-Creates a 2D tensor.
-
-Example:
-
-```cpp
-Tensor<float> a{{1, 2}, {3, 4}};
-```
-
----
-
-### 3D initializer-list constructor
-
-```cpp
-Tensor(std::initializer_list<std::initializer_list<std::initializer_list<T>>> a)
-```
-
-Creates a 3D tensor.
-
----
-
-### 4D initializer-list constructor
-
-```cpp
-Tensor(std::initializer_list<std::initializer_list<std::initializer_list<std::initializer_list<T>>>> a)
-```
-
-Creates a 4D tensor.
-
----
-
-### matrix helper
-
-```cpp
-static Tensor<T> matrix(std::initializer_list<std::initializer_list<T>> a)
-```
-
-Convenience helper for creating a 2D tensor explicitly in matrix form.
-
-This is especially useful for MLP inputs and outputs, where column-vector shaped 2D tensors are expected.
-
-Example:
-
-```cpp
-auto x = Tensor<float>::matrix({
-    {1},
-    {0}
-});
-```
-
----
 
 ## Element Access
 
-### Mutable access
-
 ```cpp
-template<typename... Args>
-T& operator()(Args... args)
+T& operator()(size_t i, size_t j)
+const T& operator()(size_t i, size_t j) const
 ```
 
-### Const access
-
-```cpp
-template<typename... Args>
-const T& operator()(Args... args) const
-```
-
-Accesses an element by coordinates.
-
-Example:
-
-```cpp
-a(1, 0)
-```
-
-The current implementation trusts the caller and does not perform bounds checking.
-
----
+No bounds checking is performed.
 
 ## Output
 
 ```cpp
-friend std::ostream& operator<<(std::ostream& os, const Tensor<T>& a)
+friend std::ostream& operator<<(std::ostream& os, const Matrix<T>& a)
 ```
 
-Printing behavior depends on the dimension:
+Prints the matrix in a readable multi-line format. An empty matrix prints as `{ NULL }`.
 
-- empty tensor → `{ NULL }`
-- 0D tensor → scalar form
-- 1D tensor → flat braced list
-- 2D tensor → row/column style output
-- higher dimension → recursive formatted output
+## Basic Operations
 
----
+### Resize
 
-## Arithmetic Operations
+```cpp
+void resize(size_t h, size_t l)
+```
+
+### Transpose
+
+```cpp
+Matrix<T> transpose() const
+```
 
 ### Addition
 
 ```cpp
-Tensor<T> operator+(const Tensor<T>& a) const
-Tensor<T>& operator+=(const Tensor<T>& a)
+Matrix<T> operator+(const Matrix<T>& a) const
+Matrix<T>& operator+=(const Matrix<T>& a)
 ```
-
-Performs element-wise addition when dimension and shape match.
-
-If shapes do not match:
-
-- `operator+` returns an empty tensor
-- `operator+=` leaves the object unchanged
-
----
 
 ### Subtraction
 
 ```cpp
-Tensor<T> operator-(const Tensor<T>& a) const
-Tensor<T>& operator-=(const Tensor<T>& a)
+Matrix<T> operator-(const Matrix<T>& a) const
+Matrix<T>& operator-=(const Matrix<T>& a)
 ```
-
-Performs element-wise subtraction when dimension and shape match.
-
----
-
-### Hadamard product
-
-```cpp
-Tensor<T> hadamard(const Tensor<T>& a) const
-Tensor<T>& hadamard_self(const Tensor<T>& a)
-```
-
-Performs element-wise multiplication when shape matches.
-
----
 
 ### Scalar multiplication
 
 ```cpp
-Tensor<T> operator*(const T& a) const
-Tensor<T>& operator*=(const T& a)
-friend Tensor<T> operator*(const T& a, const Tensor<T>& b)
+Matrix<T> operator*(const T& a) const
+Matrix<T>& operator*=(const T& a)
+friend Matrix<T> operator*(const T& a, const Matrix<T>& b)
 ```
 
-Multiplies every element by a scalar.
-
----
-
-### Tensor multiplication operator
+### Matrix multiplication
 
 ```cpp
-Tensor<T> operator*(const Tensor<T>& a) const
-Tensor<T>& operator*=(const Tensor<T>& a)
+Matrix<T> operator*(const Matrix<T>& a) const
+Matrix<T>& operator*=(const Matrix<T>& a)
 ```
 
-In the current code, this operator is **not general tensor multiplication**.
+If `this->l != a.h`, multiplication returns an empty matrix.
 
-Current behavior:
+The implementation may use multiple threads for large matrices, depending on `thread_num`.
 
-- if `a.dimension == 0`, it behaves like scalar multiplication by `a.values[0]`
-- if `this->dimension == 0`, it behaves like scalar multiplication by `this->values[0]`
-- otherwise it returns an empty tensor
-
-For 2D matrix multiplication, use `matrixMultiplication(...)` instead.
-
----
-
-## Shape / Dimension Operations
-
-### transpose
+### Hadamard product
 
 ```cpp
-Tensor<T> transpose(size_t d1, size_t d2) const
-Tensor<T>& transpose_self(size_t d1, size_t d2)
+Matrix<T> hadamard(const Matrix<T>& a) const
 ```
 
-Swaps two axes.
+Element-wise multiplication for same-shaped matrices.
 
-If an axis is out of range, `transpose(...)` returns an empty tensor.
-
-For 2D tensors, the implementation uses a specialized fast path.
-
----
-
-### sum
-
-```cpp
-Tensor<T> sum(size_t axis) const
-```
-
-Returns a tensor with one fewer dimension by summing along the given axis.
-
----
-
-### accumulate
-
-```cpp
-Tensor<T> accumulate() const
-```
-
-Sums all elements and returns a 0-dimensional tensor.
-
----
-
-### dot
-
-```cpp
-Tensor<T> dot(const Tensor<T>& a) const
-```
-
-Computes:
-
-```cpp
-hadamard(a).accumulate()
-```
-
-So the current `dot(...)` is a full element-wise contraction into a scalar tensor, assuming matching shapes.
-
----
-
-### matrixMultiplication
-
-```cpp
-Tensor<T> matrixMultiplication(const Tensor<T>& b, size_t thread_num = 0) const
-```
-
-Performs ordinary 2D matrix multiplication when:
-
-```cpp
-this->dimension == 2
-b.dimension == 2
-this->shape[1] == b.shape[0]
-```
-
-Otherwise returns an empty tensor.
-
-#### Multi-thread behavior
-
-- `thread_num <= 0`:
-  - always uses the single-thread path
-- `thread_num > 0`:
-  - may use the multi-thread path if the matrix workload is large enough
-
-For `A` with shape `m * n` and `B` with shape `n * p`, the implementation uses the single-thread path when:
-
-```cpp
-m < ((200000 / p) / n) || thread_num <= 0
-```
-
-So in ordinary usage, the multi-thread path is effectively intended for cases around:
-
-```text
-m * n * p >= 200000
-```
-
-When multi-threading is used:
-
-- the result rows are partitioned across worker threads
-- the requested thread count is clamped into `[1, m]`
-- the worker routine used internally is:
+## Helper used by threaded multiplication
 
 ```cpp
 static void subMatrixMultiplication(
@@ -477,169 +258,251 @@ static void subMatrixMultiplication(
     size_t m,
     size_t n,
     size_t p,
-    Tensor<T>& res,
-    const Tensor<T>& a,
-    const Tensor<T>& b)
+    Matrix<T>& res,
+    const Matrix<T>& a,
+    const Matrix<T>& b
+)
 ```
 
-This helper is part of the public class definition, but it exists primarily as an implementation detail of threaded matrix multiplication.
+This is public because it is inside the struct, but it is mainly an implementation helper for threaded matrix multiplication.
 
----
-
-### ascend
+## Alias
 
 ```cpp
-Tensor<T> ascend() const
-Tensor<T>& ascend_self()
+template<typename T>
+using Tensor2d = Matrix<T>;
 ```
-
-Adds a new leading dimension of size `1`.
-
-For example, a shape `{2, 3}` becomes `{1, 2, 3}`.
 
 ---
 
-# MLPLayer
+# over_threshold
 
 Defined in:
 
 ```cpp
-nn/layer.hpp
+nn/tensor_3d.hpp
 ```
 
-## Overview
+## Signature
 
-`MLPLayer<T>` represents one fully connected layer.
+```cpp
+bool over_threshold(size_t threshold, std::initializer_list<size_t> xs)
+```
 
-Although LibCN now uses `Tensor<T>`, the current MLP layer still works with **2D tensors** for weights, bias, inputs, outputs, and cached states.
+## Purpose
+
+Checks whether the product of a list of dimensions reaches or exceeds `threshold`, with overflow-aware early exit logic.
+
+This helper is used by the convolution and CNN backward code to decide whether the threaded path should be taken.
 
 ---
+
+# Tensor3d and Tensor4d
+
+Defined in:
+
+```cpp
+nn/tensor_3d.hpp
+```
+
+## Aliases
+
+```cpp
+template<Element T>
+using Tensor4d = std::vector<Tensor3d<T>>;
+```
+
+`Tensor4d<T>` is used as a list of convolution kernels.
+
+---
+
+## Tensor3d Overview
+
+`Tensor3d<T>` is the main 3D tensor type used by the CNN side of LibCN.
 
 ## Data Members
 
 ```cpp
-std::function<Tensor<T>(const Tensor<T>&)> activation;
-std::function<Tensor<T>(const Tensor<T>&)> activation_d;
-size_t in_size;
-size_t out_size;
-Tensor<T> W;
-Tensor<T> b;
-Tensor<T> last_input;
-Tensor<T> z;
-bool sm;
+std::vector<T> v;
+size_t c, h, l;
 ```
 
-### Stored tensor shapes
+Where:
 
-For `MLPLayer(i, o)`:
-
-- `W` has shape `{o, i}`
-- `b` has shape `{o, 1}`
-- `last_input` has shape `{i, 1}`
-- `z` has shape `{o, 1}`
-
-### sm
-
-`sm` defaults to `false`.
-
-It is used as a marker for the specialized `softmax + cross_entropy` path.
-
----
+- `c` = channel count
+- `h` = height
+- `l` = width / length
 
 ## Constructors
 
 ### Default constructor
 
 ```cpp
-MLPLayer()
+Tensor3d()
 ```
-
-Creates an empty layer.
 
 ### Sized constructor
 
 ```cpp
-MLPLayer(size_t i, size_t o)
+Tensor3d(size_t c, size_t h, size_t l)
 ```
 
-Creates a fully connected layer with input size `i` and output size `o`.
-
----
-
-## init
+### From matrix
 
 ```cpp
-void init(T low = T(-1), T high = T(1))
+Tensor3d(const Matrix<T>& a)
 ```
 
-Initializes `W` and `b` using a uniform real distribution on `[low, high]`.
+Creates a 1-channel tensor from a matrix.
 
-The current implementation uses:
+### Copy constructor
 
 ```cpp
-static std::mt19937 rng(std::random_device{}());
-std::uniform_real_distribution<T> dist(low, high);
+Tensor3d(const Tensor3d<T>& a)
 ```
 
----
-
-## forward
+### Assignment from tensor
 
 ```cpp
-Tensor<T> forward(const Tensor<T>& input, size_t thread_num = 0)
+Tensor3d<T>& operator=(const Tensor3d<T>& a)
 ```
 
-Performs:
+### Assignment from matrix
 
 ```cpp
-z = W.matrixMultiplication(input, thread_num) + b
-activation(z)
+Tensor3d& operator=(const Matrix<T>& a)
 ```
 
-Expected input shape is `{in_size, 1}`.
-
-If the shape check fails, `z` is not updated, and the function still returns `activation(z)` using the previously stored `z`.
-
----
-
-## backward
+### 3D initializer-list constructor
 
 ```cpp
-Tensor<T> backward(const Tensor<T>& dl_da, const T& step, size_t thread_num = 0)
+Tensor3d(
+    std::initializer_list<
+        std::initializer_list<
+            std::initializer_list<T>
+        >
+    > init
+)
 ```
 
-Standard backpropagation path.
-
-Computation:
+Example:
 
 ```cpp
-dl_dz = dl_da.hadamard(activation_d(z))
-res   = W.transpose(0,1).matrixMultiplication(dl_dz, thread_num)
-W    -= step * (dl_dz.matrixMultiplication(last_input.transpose(0,1), thread_num))
-b    -= step * dl_dz
+Tensor3d<double> x{{
+    {1.0, 2.0},
+    {3.0, 4.0}
+}};
 ```
 
-Returns gradient with respect to the previous layer output.
+This produces a tensor with `c = 1`.
 
----
-
-## backward_dz
+## Element Access
 
 ```cpp
-Tensor<T> backward_dz(const Tensor<T>& dl_dz, const T& step, size_t thread_num = 0)
+T& operator()(size_t i, size_t j, size_t k)
+T operator()(size_t i, size_t j, size_t k) const
 ```
 
-Backpropagation path used when the caller already has `dL/dz`.
-
-This is used by the specialized `softmax + cross_entropy` path in `MLP<T>`.
-
-Computation:
+## Indexed access by pointer to coordinates
 
 ```cpp
-res = W.transpose(0,1).matrixMultiplication(dl_dz, thread_num)
-W  -= step * (dl_dz.matrixMultiplication(last_input.transpose(0,1), thread_num))
-b  -= step * dl_dz
+T& visit(size_t* cord)
+T visit(size_t* cord) const
 ```
+
+## Output
+
+```cpp
+friend std::ostream& operator<<(std::ostream& os, const Tensor3d<T>& a)
+```
+
+## Resize
+
+```cpp
+void resize(size_t c, size_t h, size_t l)
+```
+
+## Arithmetic
+
+### Addition
+
+```cpp
+Tensor3d<T> operator+(const Tensor3d<T>& a) const
+Tensor3d<T>& operator+=(const Tensor3d<T>& a)
+```
+
+### Subtraction
+
+```cpp
+Tensor3d<T> operator-(const Tensor3d<T>& a) const
+Tensor3d<T>& operator-=(const Tensor3d<T>& a)
+```
+
+### Scalar multiplication
+
+```cpp
+Tensor3d<T> operator*(const T& a) const
+friend Tensor3d<T> operator*(const T& a, const Tensor3d<T>& b)
+Tensor3d<T>& operator*=(const T& a)
+```
+
+### Hadamard product
+
+```cpp
+Tensor3d<T> hadamard(const Tensor3d<T>& a) const
+```
+
+## Flatten and deflatten
+
+### Flatten
+
+```cpp
+Matrix<T> flatten()
+```
+
+Returns a column vector of shape `(c * h * l) x 1`.
+
+### Deflatten
+
+```cpp
+static Tensor3d<T> deflatten(const Matrix<T>& a, size_t c, size_t h, size_t l)
+```
+
+Rebuilds a tensor from a flattened matrix.
+
+## Convolution with one kernel
+
+```cpp
+Matrix<T> convolution(const Tensor3d<T>& a, size_t stride, size_t padding)
+```
+
+Treats `a` as a single convolution kernel and returns one output feature map as a `Matrix<T>`.
+
+## Convolution with many kernels
+
+```cpp
+Tensor3d<T> convolution(const Tensor4d<T>& a, size_t stride, size_t padding) const
+```
+
+Treats `a` as one kernel per output channel and returns a tensor of output feature maps.
+
+The implementation may use multiple threads for large workloads.
+
+## Threaded helper
+
+```cpp
+static void con_for(
+    Tensor3d<T>& res,
+    const Tensor4d<T>& a,
+    size_t stride,
+    size_t padding,
+    const Tensor3d<T>& b,
+    size_t from,
+    size_t to
+)
+```
+
+This is primarily an internal helper for threaded multi-kernel convolution.
 
 ---
 
@@ -657,13 +520,18 @@ All activation functions are in:
 LibCN::Activations
 ```
 
-All current activation functions use the form:
+---
+
+## Matrix activations
+
+All matrix activation functions have the form:
 
 ```cpp
-Tensor<T> f(const Tensor<T>& a)
+template<Element T>
+Matrix<T> f(const Matrix<T>& a)
 ```
 
-## Available activations
+### Available functions
 
 ```cpp
 relu
@@ -680,38 +548,36 @@ softmax
 softmax_d
 ```
 
+### Notes
+
+- `softmax` applies max-subtraction stabilization before exponentiation.
+- `softmax_d` returns the element-wise form `s * (1 - s)`, not the full Jacobian matrix.
+
 ---
 
-## Notes on current implementation
+## Tensor3d activations
 
-The activation implementations currently iterate with two nested loops over:
-
-```cpp
-a.getShape()[0]
-a.getShape()[1]
-```
-
-So while the function signatures accept `Tensor<T>`, the current activation code is effectively written for **2D tensors**.
-
-### softmax
-
-The implementation uses max-subtraction for basic numerical stabilization:
+Tensor3d activation functions have the form:
 
 ```cpp
-exp(a(i,j) - mx)
+template<Element T>
+Tensor3d<T> f(const Tensor3d<T>& a)
 ```
 
-and normalizes by the sum of all exponentials.
-
-### softmax_d
-
-The current implementation computes element-wise:
+### Available functions
 
 ```cpp
-s(i,j) * (1 - s(i,j))
+relu_t
+relu_d_t
+leaky_relu_t
+leaky_relu_d_t
+sigmoid_t
+sigmoid_d_t
+tanh_t
+tanh_d_t
+identity_t
+identity_d_t
 ```
-
-This is an approximation and **not the full softmax Jacobian**.
 
 ---
 
@@ -729,18 +595,7 @@ All loss functions are in:
 LibCN::Losses
 ```
 
-## Available losses
-
-```cpp
-MSE
-MSE_d
-MAE
-MAE_d
-cross_entropy
-cross_entropy_d
-```
-
-All current loss implementations also operate with two nested loops over the first two dimensions, so they are effectively written for **2D tensors** in the present code.
+All current loss functions operate on `Matrix<T>`.
 
 ---
 
@@ -748,22 +603,22 @@ All current loss implementations also operate with two nested loops over the fir
 
 ```cpp
 template<Element T>
-T MSE(const Tensor<T>& x, const Tensor<T>& e)
+T MSE(const Matrix<T>& x, const Matrix<T>& e)
 ```
 
-If shapes match, computes:
+Computes half squared error:
 
 ```cpp
 sum((x - e)^2) / 2
 ```
 
----
+for matching shapes.
 
-## MSE_d
+## MSE derivative
 
 ```cpp
 template<Element T>
-Tensor<T> MSE_d(const Tensor<T>& x, const Tensor<T>& e)
+Matrix<T> MSE_d(const Matrix<T>& x, const Matrix<T>& e)
 ```
 
 Returns:
@@ -772,72 +627,298 @@ Returns:
 x - e
 ```
 
----
-
 ## MAE
 
 ```cpp
 template<Element T>
-T MAE(const Tensor<T>& x, const Tensor<T>& e)
+T MAE(const Matrix<T>& x, const Matrix<T>& e)
 ```
 
-If shapes match, computes mean absolute error.
+Computes mean absolute error for matching shapes.
 
-> In the current source, the final division is written as `sum / (x.h * x.l)`. Since `Tensor<T>` does not define `h` and `l`, this appears inconsistent with the rest of the v3.1.0 tensor-based code and should likely be corrected to a shape-based expression.
-
----
-
-## MAE_d
+## MAE derivative
 
 ```cpp
 template<Element T>
-Tensor<T> MAE_d(const Tensor<T>& x, const Tensor<T>& e)
+Matrix<T> MAE_d(const Matrix<T>& x, const Matrix<T>& e)
 ```
 
-For matching shapes, returns element-wise:
+Returns element-wise:
 
-- `1` when `x(i,j) >= e(i,j)`
-- `-1` otherwise
+- `+1 / (h*l)` when `x(i,j) > e(i,j)`
+- `-1 / (h*l)` when `x(i,j) < e(i,j)`
+- `0` when equal
 
----
-
-## cross_entropy
+## Cross entropy
 
 ```cpp
 template<Element T>
-T cross_entropy(const Tensor<T>& x, const Tensor<T>& e)
+T cross_entropy(const Matrix<T>& x, const Matrix<T>& e)
 ```
 
-For matching shapes, computes:
+Computes:
 
 ```cpp
 - sum(e(i,j) * log(v))
 ```
 
-where `v` is clamped to:
+with `v` clamped into `[1e-12, 1 - 1e-12]`.
 
-```cpp
-[1e-12, 1 - 1e-12]
-```
-
----
-
-## cross_entropy_d
+## Cross entropy derivative
 
 ```cpp
 template<Element T>
-Tensor<T> cross_entropy_d(const Tensor<T>& x, const Tensor<T>& e)
+Matrix<T> cross_entropy_d(const Matrix<T>& x, const Matrix<T>& e)
 ```
 
-Returns element-wise:
+Returns:
 
 ```cpp
 - e(i,j) / v
 ```
 
-with the same clamp behavior.
+with the same clamp rule.
 
-If shapes do not match, the current code returns a tensor with the same dimension and shape as `x`, because `res` is constructed before the mismatch check.
+---
+
+# MLPLayer
+
+Defined in:
+
+```cpp
+nn/layer.hpp
+```
+
+## Overview
+
+`MLPLayer<T>` represents one fully connected layer.
+
+## Data Members
+
+```cpp
+std::function<Matrix<T>(const Matrix<T>&)> activation;
+std::function<Matrix<T>(const Matrix<T>&)> activation_d;
+size_t in_size;
+size_t out_size;
+Matrix<T> W;
+Matrix<T> b;
+Matrix<T> last_input;
+Matrix<T> z;
+bool sm;
+```
+
+### Shapes
+
+For `MLPLayer(i, o)`:
+
+- `W` has shape `o x i`
+- `b` has shape `o x 1`
+- `last_input` has shape `i x 1`
+- `z` has shape `o x 1`
+
+### `sm`
+
+`sm` defaults to `false`.
+
+It is used as a flag for the `softmax + cross_entropy` special training path in `MLP<T>`.
+
+## Constructors
+
+### Default constructor
+
+```cpp
+MLPLayer()
+```
+
+### Sized constructor
+
+```cpp
+MLPLayer(size_t i, size_t o)
+```
+
+## Forward
+
+```cpp
+Matrix<T> forward(const Matrix<T>& input)
+```
+
+Performs:
+
+```cpp
+z = W * input + b
+activation(z)
+```
+
+when the input shape is `in_size x 1`.
+
+## Backward
+
+```cpp
+Matrix<T> backward(const Matrix<T>& dl_da, const T& step)
+```
+
+Computes the ordinary backpropagation path:
+
+```cpp
+dl_dz = dl_da.hadamard(activation_d(z))
+res   = W.transpose() * dl_dz
+W    -= step * (dl_dz * last_input.transpose())
+b    -= step * dl_dz
+```
+
+Returns the gradient propagated to the previous layer.
+
+## Backward with precomputed `dL/dz`
+
+```cpp
+Matrix<T> backward_dz(const Matrix<T>& dl_dz, const T& step)
+```
+
+Used for the `softmax + cross_entropy` special case.
+
+## Initialization
+
+```cpp
+void init(T low = T(-1), T high = T(1))
+```
+
+Initializes `W` and `b` from a uniform distribution on `[low, high]`.
+
+## Parameter save/load
+
+```cpp
+Matrix<T> saveWeight()
+Matrix<T> saveBias()
+bool loadWeight(const Matrix<T>& W)
+bool loadBias(const Matrix<T>& b)
+```
+
+`loadWeight` and `loadBias` return `true` only when the input shape matches the stored parameter shape.
+
+---
+
+# CNNLayer
+
+Defined in:
+
+```cpp
+nn/layer.hpp
+```
+
+## Overview
+
+`CNNLayer<T>` represents one convolution layer.
+
+## Data Members
+
+```cpp
+std::function<Tensor3d<T>(const Tensor3d<T>&)> activation;
+std::function<Tensor3d<T>(const Tensor3d<T>&)> activation_d;
+Tensor4d<T> kernel;
+size_t i_c, i_h, i_l;
+size_t o_c, o_h, o_l;
+size_t stride, padding;
+std::vector<T> b;
+Tensor3d<T> z;
+Tensor3d<T> last_input;
+```
+
+## Constructors
+
+### Default constructor
+
+```cpp
+CNNLayer()
+```
+
+### Sized constructor
+
+```cpp
+CNNLayer(
+    size_t i_c,
+    size_t i_h,
+    size_t i_l,
+    size_t o_c,
+    size_t o_h,
+    size_t o_l,
+    size_t s,
+    size_t p
+)
+```
+
+Where:
+
+- `i_*` describe input shape
+- `o_*` describe output shape
+- `s` is stride
+- `p` is padding
+
+## Kernel initialization
+
+```cpp
+void init(
+    size_t c_o,
+    size_t c_i,
+    size_t h,
+    size_t l,
+    T low = T(-1),
+    T high = T(1)
+)
+```
+
+Typical usage:
+
+```cpp
+conv.init(output_channels, input_channels, kernel_h, kernel_w, -0.5, 0.5);
+```
+
+## Forward
+
+```cpp
+Tensor3d<T> forward(const Tensor3d<T>& input)
+```
+
+Performs:
+
+1. convolution with `kernel`
+2. per-output-channel bias addition
+3. activation
+
+## Backward
+
+```cpp
+Tensor3d<T> backward(const Tensor3d<T>& dl_da, const T& step)
+```
+
+Computes:
+
+- input gradient
+- kernel gradient update
+- bias gradient update
+
+Returns the gradient with respect to the previous layer input.
+
+The implementation may use multiple threads for large workloads.
+
+## Thread helpers
+
+```cpp
+static void da_for(...)
+static void grad_for(...)
+```
+
+These are public because they live inside the struct, but they are mainly internal helpers for threaded backward propagation.
+
+## Parameter save/load
+
+```cpp
+Tensor4d<T> saveKernel()
+std::vector<T> saveBias()
+bool loadKernel(const Tensor4d<T>& K)
+bool loadBias(const std::vector<T>& b)
+```
+
+These names intentionally match the current source spelling.
 
 ---
 
@@ -851,11 +932,7 @@ nn/network.hpp
 
 ## Overview
 
-`MLP<T>` is the high-level feed-forward neural network type in LibCN v3.1.0.
-
-This is the renamed successor to the old `Network<T>` interface.
-
----
+`MLP<T>` is the high-level fully connected network type.
 
 ## Data Members
 
@@ -864,30 +941,16 @@ size_t in_size;
 size_t out_size;
 std::vector<MLPLayer<T>> layers;
 T step;
-std::function<T(const Tensor<T>&, const Tensor<T>&)> loss;
-std::function<Tensor<T>(const Tensor<T>&, const Tensor<T>&)> loss_d;
+std::function<T(const Matrix<T>&, const Matrix<T>&)> loss;
+std::function<Matrix<T>(const Matrix<T>&, const Matrix<T>&)> loss_d;
 bool ce;
-size_t thread_num;
 ```
 
-### ce
+### `ce`
 
 `ce` defaults to `false`.
 
-It is used as a flag for the specialized `softmax + cross_entropy` training path.
-
-### thread_num
-
-`thread_num` defaults to `0`.
-
-It stores the thread count forwarded into every layer call and then into every matrix multiplication used by `train(...)`, `train_p(...)`, and `use(...)`.
-
-By current implementation:
-
-- `0` means disabled
-- positive values enable threaded matrix multiplication when the workload threshold is met
-
----
+It is used together with `layers.back().sm` to enable the `softmax + cross_entropy` special path.
 
 ## Constructors
 
@@ -897,283 +960,239 @@ By current implementation:
 MLP()
 ```
 
-Creates an empty network.
-
-Initial state includes:
-
-```cpp
-ce = false;
-thread_num = 0;
-```
-
 ### Sized constructor
 
 ```cpp
 MLP(size_t layer_size, size_t in_size, size_t out_size, const T& step)
 ```
 
-Initializes:
-
-- number of layers
-- input size
-- output size
-- learning rate
-
-The layers are default-constructed and must be configured afterward.
-
-Initial state also includes:
-
-```cpp
-ce = false;
-thread_num = 0;
-```
-
----
-
-## Thread Configuration
-
-### setThreadNum
-
-```cpp
-void setThreadNum(size_t tn)
-```
-
-Sets `thread_num`.
-
-This value is used by:
-
-- `train(...)`
-- `train_p(...)`
-- `use(...)`
-
-and forwarded into all layer `forward(...)`, `backward(...)`, and `backward_dz(...)` calls.
-
----
-
-## Parameter Save / Load
-
-### saveLayerWeights
-
-```cpp
-Tensor<T> saveLayerWeights(size_t index)
-```
-
-Returns a copy of `layers[index].W`.
-
-### saveLayerBias
-
-```cpp
-Tensor<T> saveLayerBias(size_t index)
-```
-
-Returns a copy of `layers[index].b`.
-
-### loadLayerWeights
-
-```cpp
-void loadLayerWeights(size_t index, const Tensor<T>& weights)
-```
-
-Replaces `layers[index].W`.
-
-### loadLayerBias
-
-```cpp
-void loadLayerBias(size_t index, const Tensor<T>& bias)
-```
-
-Replaces `layers[index].b`.
-
-These interfaces expose raw tensor parameters and leave external serialization format decisions to the user.
-
----
-
 ## Configuration
 
-### setLayer
+### Set one layer
 
 ```cpp
 void setLayer(size_t index, size_t i, size_t o)
 ```
 
-Sets `layers[index]` to `MLPLayer<T>(i, o)`.
-
-### setLayerFun
+### Set activation functions
 
 ```cpp
 void setLayerFun(
     size_t index,
-    const std::function<Tensor<T>(const Tensor<T>&)>& a,
-    const std::function<Tensor<T>(const Tensor<T>&)>& a_d)
+    const std::function<Matrix<T>(const Matrix<T>&)>& a,
+    const std::function<Matrix<T>(const Matrix<T>&)>& a_d
+)
 ```
 
-Assigns activation function and derivative for one layer.
-
-### setLoss
+### Set loss
 
 ```cpp
 void setLoss(
-    const std::function<T(const Tensor<T>&, const Tensor<T>&)> l,
-    const std::function<Tensor<T>(const Tensor<T>&, const Tensor<T>&)> l_d)
+    const std::function<T(const Matrix<T>&, const Matrix<T>&)> l,
+    const std::function<Matrix<T>(const Matrix<T>&, const Matrix<T>&)> l_d
+)
 ```
 
-Assigns loss function and loss derivative.
-
-### init
+### Initialize all layers
 
 ```cpp
 void init(T low = T(-1), T high = T(1))
 ```
 
-Calls `init(low, high)` for every layer.
-
----
-
 ## Inference
 
-### use
-
 ```cpp
-Tensor<T> use(const Tensor<T>& input)
+Matrix<T> use(const Matrix<T>& input)
 ```
 
-Feeds the input through all layers and returns the final output.
-
-Internally, each layer call is:
-
-```cpp
-output = layers[i].forward(last_output, thread_num)
-```
-
-The intended input format is a 2D tensor shaped like a column vector.
-
----
+Feeds `input` through all layers.
 
 ## Training
 
-### train
-
 ```cpp
-void train(const Tensor<T>& input, const Tensor<T>& expected)
+T train(
+    const Matrix<T>& input,
+    const Matrix<T>& expected,
+    Matrix<T>& l_dl_da
+)
 ```
 
-Performs one forward pass and one backward pass.
+Performs one training step and returns the loss value.
 
-During forward propagation, each layer is called as:
+The third argument is an output parameter that receives the gradient propagated to the input of the first MLP layer.
 
-```cpp
-output = layers[i].forward(last_output, thread_num)
-```
+### Ordinary path
 
-#### Ordinary path
-
-Used when:
-
-```cpp
-!(layers.back().sm && ce)
-```
-
-Then:
+When the last layer is not marked as softmax-specialized:
 
 ```cpp
 last_dl_da = loss_d(output, expected)
 ```
 
-and layers are backpropagated from last to first with:
+and each layer backpropagates through `backward(...)`.
+
+### Special `softmax + cross_entropy` path
+
+When both:
 
 ```cpp
-layers[j].backward(last_dl_da, step, thread_num)
+layers.back().sm == true
+ce == true
 ```
 
-#### Specialized softmax + cross_entropy path
-
-Used when:
-
-```cpp
-layers.back().sm && ce
-```
-
-Then the last layer uses:
+the last layer uses:
 
 ```cpp
 dl_dz = output - expected
 ```
 
-and backpropagates through:
-
-```cpp
-layers.back().backward_dz(dl_dz, step, thread_num)
-```
-
-Previous layers still use ordinary `backward(...)` with the same forwarded thread count.
+and calls `backward_dz(...)`.
 
 ---
 
-### train_p
+# CNN
+
+Defined in:
 
 ```cpp
-void train_p(const Tensor<T>& input, const Tensor<T>& expected)
+nn/network.hpp
 ```
 
-Same as `train(...)`, but prints the current loss first:
+## Overview
+
+`CNN<T>` is a lightweight wrapper that combines convolution layers with a public `MLP<T>` classifier.
+
+## Data Members
 
 ```cpp
-std::cout << "Loss: " << loss(output, expected) << std::endl;
+size_t i_c, i_h, i_l;
+size_t o_c, o_h, o_l;
+std::vector<CNNLayer<T>> layers;
+T step;
+MLP<T> mlp;
 ```
 
-Like `train(...)`, all matrix multiplications in forward/backward propagation receive `thread_num`.
+## Constructors
+
+### Default constructor
+
+```cpp
+CNN()
+```
+
+### Sized constructor
+
+```cpp
+CNN(
+    size_t layer_size,
+    size_t i_c,
+    size_t i_h,
+    size_t i_l,
+    size_t o_c,
+    size_t o_h,
+    size_t o_l,
+    const T& step
+)
+```
+
+## Training
+
+```cpp
+T train(const Tensor3d<T>& input, const Matrix<T>& expected)
+```
+
+Current workflow:
+
+1. forward through every `CNNLayer`
+2. flatten the last `Tensor3d`
+3. train `mlp` on that flattened matrix
+4. deflatten the MLP gradient back into tensor form
+5. backpropagate through CNN layers
+
+Returns the loss value from the inner `mlp.train(...)`.
+
+## Initialization
+
+```cpp
+void init(T low = T(-1), T high = T(1))
+```
+
+Calls `init(...)` on every convolution layer in `layers`.
+
+## Inference note
+
+`CNN<T>` does **not** provide a `use(...)` helper in the current source.
+
+The common inference pattern is:
+
+```cpp
+Tensor3d<T> x = input;
+for (size_t i = 0; i < cnn.layers.size(); ++i) {
+    x = cnn.layers[i].forward(x);
+}
+Matrix<T> y = cnn.mlp.use(x.flatten());
+```
 
 ---
 
-# Typical Usage Pattern
+# Typical Usage Patterns
+
+## MLP
 
 ```cpp
-MLP<float> net(layer_count, input_size, output_size, learning_rate);
+LibCN::MLP<double> net(2, 2, 2, 0.1);
 
-net.setLoss(...);
-net.setLayer(0, ...);
-net.setLayer(1, ...);
-net.setLayerFun(0, ..., ...);
-net.setLayerFun(1, ..., ...);
-net.setThreadNum(4); // optional in v3.1.0
-net.init();
+net.setLayer(0, 2, 4);
+net.setLayer(1, 4, 2);
+
+net.setLayerFun(0, LibCN::Activations::tanh<double>, LibCN::Activations::tanh_d<double>);
+net.setLayerFun(1, LibCN::Activations::softmax<double>, LibCN::Activations::softmax_d<double>);
+
+net.setLoss(
+    LibCN::Losses::cross_entropy<double>,
+    LibCN::Losses::cross_entropy_d<double>
+);
+
+net.layers[1].sm = true;
+net.ce = true;
+
+net.init(-1.0, 1.0);
 ```
 
-Input / output tensors should generally be prepared as 2D column vectors, for example:
+## CNN + MLP
 
 ```cpp
-auto x = Tensor<float>::matrix({
-    {1},
-    {0}
-});
+LibCN::CNN<double> cnn(1, 1, 4, 4, 2, 3, 3, 0.05);
+
+cnn.layers[0] = LibCN::CNNLayer<double>(1, 4, 4, 2, 3, 3, 1, 0);
+cnn.layers[0].activation = LibCN::Activations::relu_t<double>;
+cnn.layers[0].activation_d = LibCN::Activations::relu_d_t<double>;
+cnn.layers[0].init(2, 1, 2, 2, -0.5, 0.5);
+
+cnn.mlp = LibCN::MLP<double>(1, 18, 2, 0.05);
+cnn.mlp.setLayer(0, 18, 2);
+cnn.mlp.setLayerFun(
+    0,
+    LibCN::Activations::softmax<double>,
+    LibCN::Activations::softmax_d<double>
+);
+cnn.mlp.setLoss(
+    LibCN::Losses::cross_entropy<double>,
+    LibCN::Losses::cross_entropy_d<double>
+);
+cnn.mlp.layers[0].sm = true;
+cnn.mlp.ce = true;
+cnn.mlp.init(-0.5, 0.5);
 ```
 
 ---
 
-# Summary of Renamed / Added Interfaces
+# Source-Level Notes
 
-Compared with the older API:
+These notes are included to keep the API reference honest to the current 5.0 headers.
 
-```cpp
-Network<T>      -> MLP<T>
-setMLPLayer     -> setLayer
-setMLPLayerFun  -> setLayerFun
-Matrix<T>       -> Tensor<T>
-```
+- The library uses a compile-time macro named `thread_num`, which is simple but globally visible and may conflict with user code that uses the same macro name.
+- `softmax_d` is an element-wise approximation, not the full softmax Jacobian.
+- `CNN<T>` provides `train(...)` but not a top-level `use(...)` helper.
 
-Newly added in v3.1.0:
-
-```cpp
-Tensor<T>::matrixMultiplication(const Tensor<T>&, size_t thread_num = 0)
-MLPLayer<T>::forward(..., size_t thread_num = 0)
-MLPLayer<T>::backward(..., size_t thread_num = 0)
-MLPLayer<T>::backward_dz(..., size_t thread_num = 0)
-MLP<T>::thread_num
-MLP<T>::setThreadNum(size_t)
-```
-
----
-
-# Notes
-
-This documentation is written against the uploaded v3.1.0 source itself, so it reflects the current code behavior, including implementation details and current limitations.
+This document describes the current source as written, not an idealized future API.

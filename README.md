@@ -1,80 +1,45 @@
-# Lib Chest NeuralNetwork (LibCN)
+# LibCN 5.0
 
 A lightweight, header-only neural network library written in modern C++.
 
-LibCN is a small C++ library built for learning, experimentation, and simple native projects. In **v3.0.0**, the library replaced the old `Matrix<T>` core container with a more general **`Tensor<T>`** type and renamed the high-level network type from `Network` to **`MLP`**. In **v3.1.0**, LibCN adds optional multi-threaded acceleration for matrix multiplication and propagates thread-count control through `MLPLayer` and `MLP`.
+LibCN is a small native C++ library for learning, experimentation, and simple CPU-side neural-network projects.  
+The current **5.0** codebase provides:
 
-The project focuses on clarity, directness, and hackability rather than framework-scale abstraction.
+- a 2D matrix container: `Matrix<T>`
+- a 3D tensor container: `Tensor3d<T>`
+- a 4D tensor alias for convolution kernels: `Tensor4d<T>`
+- fully connected layers and networks: `MLPLayer<T>`, `MLP<T>`
+- convolution layers and a simple CNN wrapper: `CNNLayer<T>`, `CNN<T>`
+- built-in activation and loss functions
+- parameter save/load at layer level
+- optional multi-threaded acceleration for some heavy matrix and convolution workloads
 
----
-
-## Highlights of v3.1.0
-
-Compared with the previous version, **LibCN v3.1.0** mainly introduces:
-
-- optional multi-threaded matrix multiplication:
-  - `Tensor<T>::matrixMultiplication(const Tensor<T>&, size_t thread_num = 0)`
-- per-layer thread-count forwarding:
-  - `MLPLayer<T>::forward(..., size_t thread_num = 0)`
-  - `MLPLayer<T>::backward(..., size_t thread_num = 0)`
-  - `MLPLayer<T>::backward_dz(..., size_t thread_num = 0)`
-- network-level thread-count management:
-  - `MLP<T>::thread_num`
-  - `MLP<T>::setThreadNum(size_t)`
-- all `MLP::train(...)`, `train_p(...)`, and `use(...)` calls now forward the configured thread count into every layer, and then into every matrix multiplication involved in forward/backward propagation
-
-The existing **v3.0.0** changes remain in place:
-
-- `Tensor<T>` fully replaces `Matrix<T>` as the core data container
-- high-level network type renamed from `Network<T>` to `MLP<T>`
-- fully connected layers still use 2D tensors internally for weights, bias, input, and output
-- save/load interfaces added for layer parameters:
-  - `saveLayerWeights(...)`
-  - `saveLayerBias(...)`
-  - `loadLayerWeights(...)`
-  - `loadLayerBias(...)`
-- tensor-based initialization helpers added for matrix-style data construction
-
-Although the public container is now generalized, the current MLP implementation still expects **column-vector shaped 2D tensors** as layer inputs and outputs.
-
----
-
-## Design Goals
-
-LibCN is designed to:
-
-- help understand how neural networks work internally
-- stay small enough to read directly from source
-- avoid external dependencies
-- remain easy to integrate into normal C++ projects
-- provide a lightweight base for experimentation
-
-This project is **not intended to replace PyTorch, TensorFlow, or other industrial frameworks**.
+LibCN focuses on readability, directness, and hackability rather than framework-scale abstraction.
 
 ---
 
 ## Features
 
-- Header-only library
-- Pure template implementation
-- Requires only the C++ standard library
+- Header-only
+- Modern C++ templates
 - No external dependencies
-- General-purpose `Tensor<T>` container
-- Fully connected neural network (`MLP`)
-- Multiple activation functions
-- Multiple loss functions
-- Optional specialized path for `softmax + cross_entropy`
-- Optional loss printing during training
-- Layer weight/bias export and import
-- Optional multi-threaded matrix multiplication
-- Network-level thread-count control through `MLP::setThreadNum(...)`
+- Dense matrix operations
+- 3D tensor operations
+- Flatten / deflatten helpers
+- Single-kernel and multi-kernel convolution
+- MLP support
+- CNN layer support
+- A simple `CNN + MLP` pipeline
+- Common activations and losses
+- Optional `softmax + cross_entropy` special path
+- Optional multi-threading controlled by a compile-time macro
 
 ---
 
 ## Requirements
 
 - **C++20** or newer
-- Any modern compiler such as:
+- A modern compiler such as:
   - GCC
   - Clang
   - MSVC
@@ -85,7 +50,7 @@ Example compilation on Linux:
 g++ -std=c++20 -pthread example.cpp -o example
 ```
 
-On toolchains where `std::thread` support does not require a separate thread flag, the extra thread option may be unnecessary.
+Because LibCN uses `std::thread` in several code paths, `-pthread` is recommended on GCC/Clang toolchains.
 
 ---
 
@@ -93,217 +58,119 @@ On toolchains where `std::thread` support does not require a separate thread fla
 
 LibCN is header-only.
 
-Copy the headers into your project and include:
+Copy the files into your project with this structure:
+
+```text
+lib_chest_nn.hpp
+nn/
+    matrix.hpp
+    layer.hpp
+    activations.hpp
+    network.hpp
+    losses.hpp
+    tensor_3d.hpp
+```
+
+Then include:
 
 ```cpp
 #include "lib_chest_nn.hpp"
 ```
 
-No build system, package manager, or separate linking step is required.
+No separate build step or linking step is required beyond compiling your own source file.
 
 ---
 
-## Multi-threading Notes
+## Current Core Types
 
-LibCN v3.1.0 does **not** automatically use all CPU cores by default.
+### `Matrix<T>`
 
-The thread-count policy is:
+A 2D dense matrix type used by the MLP side of the library.
 
-- `thread_num <= 0`:
-  - multi-threading is disabled
-- `thread_num > 0`:
-  - matrix multiplication is allowed to use multiple threads
+Main capabilities:
 
-At the `MLP` level, the thread count is configured by:
+- element access with `operator()(i, j)`
+- addition / subtraction
+- scalar multiplication
+- matrix multiplication with `operator*`
+- transpose
+- Hadamard product
+- formatted printing
+
+### `Tensor3d<T>`
+
+A 3D tensor type used by the CNN side of the library.
+
+Main capabilities:
+
+- element access with `operator()(c, h, w)`
+- addition / subtraction
+- scalar multiplication
+- Hadamard product
+- flatten to `Matrix<T>`
+- deflatten from `Matrix<T>`
+- convolution with one kernel (`Tensor3d<T>`)
+- convolution with multiple kernels (`Tensor4d<T>`)
+
+### `Tensor4d<T>`
+
+An alias:
 
 ```cpp
-net.setThreadNum(n);
+template<Element T>
+using Tensor4d = std::vector<Tensor3d<T>>;
 ```
 
-That value is stored in:
+In practice, this is used as a set of convolution kernels, where each output channel stores one `Tensor3d<T>` kernel.
+
+---
+
+## Threading Model
+
+LibCN 5.0 does **not** expose runtime thread control through something like `setThreadNum(...)`.
+
+Instead, threading is controlled by the macro `thread_num` in `matrix.hpp`:
 
 ```cpp
-size_t thread_num;
+#ifndef thread_num
+#define thread_num 10
+#endif
 ```
 
-and is forwarded into every layer call and then into every matrix multiplication used by forward/backward propagation.
+That means:
+
+- by default, the library may use up to `10` worker threads in supported heavy operations
+- you can override this before including the library:
+
+```cpp
+#define thread_num 4
+#include "lib_chest_nn.hpp"
+```
+
+or disable those threaded paths:
+
+```cpp
+#define thread_num 0
+#include "lib_chest_nn.hpp"
+```
+
+### Where threading is used
+
+The current code may use multiple threads in:
+
+- large matrix multiplication in `Matrix<T>::operator*(const Matrix<T>&)`
+- multi-kernel convolution in `Tensor3d<T>::convolution(const Tensor4d<T>&, ...)`
+- parts of `CNNLayer<T>::backward(...)`
 
 ### Threshold behavior
 
-Even if multi-threading is enabled, LibCN only uses the multi-threaded matrix-multiplication path when the matrix workload is large enough.
-
-For:
-
-- `A` with shape `i * j`
-- `B` with shape `j * k`
-
-multi-threading is intended to be used only when:
-
-```text
-i * j * k >= 200000
-```
-
-Otherwise the single-threaded path is used.
-
-### Actual thread count used
-
-Even when a larger `thread_num` is requested, the implementation clamps the number of worker threads so it does not exceed the row count of the left matrix.
-
----
-
-## Quick Example
-
-A simple XOR example using the current v3.1.0 API:
-
-```cpp
-#include "lib_chest_nn.hpp"
-#include <iostream>
-
-using namespace std;
-using namespace LibCN;
-
-int main(){
-    cout << "this is an example for demostrating the train and use of xor using LibCN" << endl;
-
-    MLP<float> net(2,2,1,0.05f);
-
-    net.setLoss(Losses::MSE<float>, Losses::MSE_d<float>);
-
-    net.setLayer(0,2,4);
-    net.setLayer(1,4,1);
-
-    net.init(-0.5f,0.5f);
-
-    net.setLayerFun(0, Activations::tanh<float>, Activations::tanh_d<float>);
-    net.setLayerFun(1, Activations::sigmoid<float>, Activations::sigmoid_d<float>);
-
-    // v3.1.0: optional multi-thread control
-    net.setThreadNum(4);
-
-    cout << "MLP network initialized" << endl;
-
-    Tensor<float> x1 = Tensor<float>::matrix({
-        {0},
-        {0}
-    });
-    Tensor<float> x2 = Tensor<float>::matrix({
-        {0},
-        {1}
-    });
-    Tensor<float> x3 = Tensor<float>::matrix({
-        {1},
-        {0}
-    });
-    Tensor<float> x4 = Tensor<float>::matrix({
-        {1},
-        {1}
-    });
-
-    Tensor<float> y1 = Tensor<float>::matrix({{0}});
-    Tensor<float> y2 = Tensor<float>::matrix({{1}});
-    Tensor<float> y3 = Tensor<float>::matrix({{1}});
-    Tensor<float> y4 = Tensor<float>::matrix({{0}});
-
-    cout << "training data prepared" << endl;
-
-    cout << "before training" << endl;
-    cout << "0 xor 0 -> " << net.use(x1) << endl;
-    cout << "0 xor 1 -> " << net.use(x2) << endl;
-    cout << "1 xor 0 -> " << net.use(x3) << endl;
-    cout << "1 xor 1 -> " << net.use(x4) << endl;
-
-    for(int i=0;i<50000;++i){
-        if(i%5000==0){
-            net.train_p(x1,y1);
-            net.train_p(x2,y2);
-            net.train_p(x3,y3);
-            net.train_p(x4,y4);
-        }
-        else{
-            net.train(x1,y1);
-            net.train(x2,y2);
-            net.train(x3,y3);
-            net.train(x4,y4);
-        }
-    }
-
-    cout << "\nafter training" << endl;
-    cout << "0 xor 0 -> " << net.use(x1) << endl;
-    cout << "0 xor 1 -> " << net.use(x2) << endl;
-    cout << "1 xor 0 -> " << net.use(x3) << endl;
-    cout << "1 xor 1 -> " << net.use(x4) << endl;
-
-    auto w0 = net.saveLayerWeights(0);
-    auto b0 = net.saveLayerBias(0);
-    auto w1 = net.saveLayerWeights(1);
-    auto b1 = net.saveLayerBias(1);
-
-    cout << "theta saved" << endl;
-
-    MLP<float> test_net(2,2,1,0);
-
-    test_net.setLayer(0,2,4);
-    test_net.setLayer(1,4,1);
-
-    test_net.setLayerFun(0, Activations::tanh<float>, Activations::tanh_d<float>);
-    test_net.setLayerFun(1, Activations::sigmoid<float>, Activations::sigmoid_d<float>);
-
-    // inference can also use thread forwarding
-    test_net.setThreadNum(4);
-
-    cout << "new MLP network created" << endl;
-
-    test_net.loadLayerWeights(0,w0);
-    test_net.loadLayerBias(0,b0);
-    test_net.loadLayerWeights(1,w1);
-    test_net.loadLayerBias(1,b1);
-
-    cout << "theta loaded" << endl;
-
-    while(true){
-        cout << "please input two booleans (1 or 0), or input other value to quit" << endl;
-        Tensor<float> x(2,{2,1});
-        if(!(cin >> x(0,0) >> x(1,0))) break;
-        auto yt = test_net.use(x);
-        cout << (yt(0,0) > 0.5 ? "true" : "false") << endl;
-    }
-
-    return 0;
-}
-```
-
----
-
-## Tensor Notes
-
-`Tensor<T>` is now the base numerical type of the library.
-
-Currently implemented features include:
-
-- scalar / vector / matrix / higher-dimensional construction
-- shape and stride storage
-- coordinate mapping
-- element access through `operator()`
-- transpose by two axes
-- element-wise operations
-- full accumulation
-- axis-wise sum
-- Hadamard product
-- scalar multiplication
-- 2D matrix multiplication through `matrixMultiplication(...)`
-- optional multi-threaded matrix multiplication via the `thread_num` parameter
-- dimension promotion through `ascend()`
-
-For current MLP usage, the most important convention is:
-
-- **inputs and outputs should be 2D tensors shaped like column vectors**
-- for example, a 2-input sample should usually be shaped as `{2, 1}`
+The library only uses the threaded path for sufficiently large workloads. Small workloads stay on the single-thread path to avoid thread-launch overhead.
 
 ---
 
 ## Activation Functions
 
-Current activation functions are provided in `LibCN::Activations`:
+The library provides matrix activations in `LibCN::Activations`:
 
 - `relu`
 - `relu_d`
@@ -318,19 +185,24 @@ Current activation functions are provided in `LibCN::Activations`:
 - `softmax`
 - `softmax_d`
 
-All current activation functions use the form:
+It also provides 3D tensor variants for CNN usage:
 
-```cpp
-Tensor<T> f(const Tensor<T>&)
-```
-
-`softmax_d` is currently an **approximate element-wise form**, not the full Jacobian.
+- `relu_t`
+- `relu_d_t`
+- `leaky_relu_t`
+- `leaky_relu_d_t`
+- `sigmoid_t`
+- `sigmoid_d_t`
+- `tanh_t`
+- `tanh_d_t`
+- `identity_t`
+- `identity_d_t`
 
 ---
 
 ## Loss Functions
 
-Current loss functions are provided in `LibCN::Losses`:
+Available in `LibCN::Losses`:
 
 - `MSE`
 - `MSE_d`
@@ -339,37 +211,130 @@ Current loss functions are provided in `LibCN::Losses`:
 - `cross_entropy`
 - `cross_entropy_d`
 
-Loss selection is done through:
-
-```cpp
-net.setLoss(loss_function, loss_derivative_function);
-```
+These losses currently operate on `Matrix<T>` values.
 
 ---
 
-## Specialized Softmax + Cross Entropy Path
+## MLP Overview
 
-LibCN contains a specialized training path for the common combination:
+The fully connected side of the library is built from:
 
-- output layer uses `softmax`
-- loss uses `cross_entropy`
+- `MLPLayer<T>`
+- `MLP<T>`
 
-This path is controlled by two flags already present in the library:
+Typical workflow:
+
+1. create an `MLP<T>`
+2. define each layer with `setLayer(...)`
+3. assign activation functions with `setLayerFun(...)`
+4. assign a loss with `setLoss(...)`
+5. initialize parameters with `init(...)`
+6. train with `train(...)`
+7. run inference with `use(...)`
+
+### Special `softmax + cross_entropy` path
+
+LibCN includes a manual special case for the common output combination:
+
+- last layer activation is `softmax`
+- loss is `cross_entropy`
+
+To enable it, set:
 
 ```cpp
-net.ce = true;
-net.layers.back().sm = true;
+mlp.layers.back().sm = true;
+mlp.ce = true;
 ```
 
-When both conditions are true, the last layer uses:
+When both flags are set, the last layer backpropagates with:
 
 ```cpp
 output - expected
 ```
 
-as `dL/dz`, and backpropagates through `backward_dz(...)`.
+instead of calling the ordinary loss derivative path.
 
-In v3.1.0, this specialized path also forwards `thread_num` into its matrix multiplications.
+---
+
+## CNN Overview
+
+The convolution side is built from:
+
+- `CNNLayer<T>`
+- `CNN<T>`
+
+`CNNLayer<T>` handles:
+
+- multi-channel convolution
+- per-output-channel bias
+- activation
+- backward propagation for convolution kernels and input gradients
+
+`CNN<T>` is a light wrapper that combines:
+
+- a list of convolution layers in `cnn.layers`
+- a public `MLP<T> mlp` classifier at the end
+
+Training is done with:
+
+```cpp
+cnn.train(input_tensor, expected_output);
+```
+
+### Inference note
+
+The current `CNN<T>` wrapper does **not** provide a `use(...)` helper.
+
+For inference, the usual pattern is:
+
+1. forward through each `CNNLayer`
+2. flatten the final `Tensor3d`
+3. call `cnn.mlp.use(...)`
+
+---
+
+## Quick Example
+
+A minimal MLP example:
+
+```cpp
+#include <iostream>
+#include "lib_chest_nn.hpp"
+
+int main() {
+    using T = double;
+
+    LibCN::MLP<T> net(2, 2, 2, 0.1);
+
+    net.setLayer(0, 2, 4);
+    net.setLayer(1, 4, 2);
+
+    net.setLayerFun(0, LibCN::Activations::tanh<T>, LibCN::Activations::tanh_d<T>);
+    net.setLayerFun(1, LibCN::Activations::softmax<T>, LibCN::Activations::softmax_d<T>);
+
+    net.setLoss(
+        LibCN::Losses::cross_entropy<T>,
+        LibCN::Losses::cross_entropy_d<T>
+    );
+
+    net.layers[1].sm = true;
+    net.ce = true;
+
+    net.init(-1.0, 1.0);
+
+    LibCN::Matrix<T> x{{0.0}, {1.0}};
+    LibCN::Matrix<T> y{{0.0}, {1.0}};
+    LibCN::Matrix<T> first_layer_grad;
+
+    for (int i = 0; i < 1000; ++i) {
+        net.train(x, y, first_layer_grad);
+    }
+
+    std::cout << net.use(x) << "\n";
+}
+```
+
+For a broader demonstration covering matrix operations, tensors, convolution, activations, losses, MLP, CNN layers, and a small CNN training example, see `example.cpp`.
 
 ---
 
@@ -378,11 +343,12 @@ In v3.1.0, this specialized path also forwards `thread_num` into its matrix mult
 ```text
 lib_chest_nn.hpp
 nn/
-    tensor.hpp
+    matrix.hpp
     layer.hpp
     activations.hpp
-    losses.hpp
     network.hpp
+    losses.hpp
+    tensor_3d.hpp
 ```
 
 ### File Overview
@@ -390,46 +356,50 @@ nn/
 **lib_chest_nn.hpp**  
 Main entry header.
 
-**nn/tensor.hpp**  
-General-purpose tensor container and basic tensor operations, including optional multi-threaded 2D matrix multiplication.
+**nn/matrix.hpp**  
+2D matrix container, arithmetic, transpose, Hadamard product, and matrix multiplication.
 
-**nn/layer.hpp**  
-Fully connected layer implementation.
+**nn/tensor_3d.hpp**  
+3D tensor container, flatten / deflatten, convolution, tensor aliases, and threshold helper.
 
 **nn/activations.hpp**  
-Activation functions and their derivatives.
+Built-in activation functions for `Matrix<T>` and `Tensor3d<T>`.
 
 **nn/losses.hpp**  
-Loss functions and their derivatives.
+Built-in loss functions for `Matrix<T>`.
+
+**nn/layer.hpp**  
+Definitions of `MLPLayer<T>` and `CNNLayer<T>`.
 
 **nn/network.hpp**  
-`MLP<T>` definition, training logic, and network-level thread-count control.
+Definitions of `MLP<T>` and `CNN<T>`.
 
 ---
 
-## Current Scope
+## Scope
 
-LibCN v3.1.0 is currently suitable for:
+LibCN 5.0 is currently suitable for:
 
-- learning neural networks
-- educational demonstrations
-- small experiments
-- lightweight native C++ usage
-- testing tensor-based neural-network code without external frameworks
-- experimenting with simple CPU-side multi-thread acceleration for dense matrix multiplication
+- learning neural-network internals
+- educational demos
+- simple native C++ experiments
+- small CPU-side projects
+- custom experimentation with MLPs and small CNNs
 
-It is **not intended for production-scale training workloads**.
-
----
-
-## Author
-
-MrChest / 石函
+It is **not** intended to compete with large production frameworks such as PyTorch or TensorFlow.
 
 ---
 
-## License
+## Notes
 
-This project is released under the MIT License.
+- The API is intentionally low-level and transparent.
+- Several implementation details are currently exposed as public members.
+- Thread control is compile-time macro based, not runtime configurable.
 
-See the `LICENSE` file for details.
+---
+
+## Documentation
+
+- `README.md`: high-level overview and usage notes
+- `api.md`: source-level API reference for LibCN 5.0
+
