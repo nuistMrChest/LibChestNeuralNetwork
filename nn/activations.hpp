@@ -5,7 +5,7 @@
 #include"tensor_3d.hpp"
 #include<cmath>
 
-namespace LibCN{
+namespace LibChestNN{
 	namespace Activations{
 		template<Element T>Matrix<T>relu(const Matrix<T>&a){
 			Matrix<T>res(a.h,a.l);

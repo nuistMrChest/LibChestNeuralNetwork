@@ -8,7 +8,7 @@
 #include"matrix.hpp"
 #include<thread>
 
-namespace LibCN{
+namespace LibChestNN{
 	bool over_threshold(size_t threshold,std::initializer_list<size_t>xs){
 		size_t acc=1;
 		for(size_t x:xs){

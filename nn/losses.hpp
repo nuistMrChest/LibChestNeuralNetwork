@@ -4,7 +4,7 @@
 #include"matrix.hpp"
 #include<cmath>
 
-namespace LibCN{
+namespace LibChestNN{
 	namespace Losses{
 		template<Element T>T MSE(const Matrix<T>&x,const Matrix<T>&e){
 			T res=T();

@@ -11,7 +11,7 @@
 #define thread_num 10
 #endif
 
-namespace LibCN{
+namespace LibChestNN{
 	template<typename T>concept Element=requires(T a,T b,std::iostream&os){
 		{a+b}->std::same_as<T>;
 		{a+=b}->std::same_as<T&>;

@@ -10,7 +10,7 @@
 #include<iostream>
 #include"tensor_3d.hpp"
 
-namespace LibCN{
+namespace LibChestNN{
 	template<Element T>struct MLP{
 		size_t in_size;
 		size_t out_size;

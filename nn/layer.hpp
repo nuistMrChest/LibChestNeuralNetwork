@@ -8,7 +8,7 @@
 #include<thread>
 #include<algorithm>
 
-namespace LibCN{
+namespace LibChestNN{
 	template<Element T>struct MLPLayer{
 		std::function<Matrix<T>(const Matrix<T>&)>activation;
 		std::function<Matrix<T>(const Matrix<T>&)>activation_d;
